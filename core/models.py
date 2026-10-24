@@ -91,6 +91,50 @@ class Notification(models.Model):
         return f'user_id: {self.user_id}, title: {self.title}'
 
 
+class State(models.Model):
+    name = models.CharField(max_length=50)
+    code = models.CharField(max_length=4, unique=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class City(models.Model):
+    state = models.ForeignKey(
+        State,
+        related_name='cities',
+        on_delete=models.CASCADE
+    )
+    name = models.CharField(max_length=50)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name_plural = 'cities'
+
+    def __str__(self):
+        return self.name
+
+
+class District(models.Model):
+    city = models.ForeignKey(
+        City,
+        related_name='districts',
+        on_delete=models.CASCADE
+    )
+    name = models.CharField(max_length=50)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['name']
+        indexes = [models.Index(fields=['name'])]
+
+    def __str__(self):
+        return self.name
+
+
 class VehicleCategory(models.Model):
     name = models.CharField(max_length=50)
     description = models.TextField(blank=True)
@@ -194,6 +238,24 @@ class Transfer(models.Model):
         choices=enums.TransferStatus.choices,
         default=enums.TransferStatus.PENDING
     )
+    state = models.ForeignKey(
+        State,
+        related_name='transfers',
+        on_delete=models.PROTECT,
+        blank=True, null=True
+    )
+    pickup_district = models.ForeignKey(
+        District,
+        related_name='pickup_transfers',
+        on_delete=models.PROTECT,
+        blank=True, null=True
+    )
+    dropoff_district = models.ForeignKey(
+        District,
+        related_name='dropoff_transfers',
+        on_delete=models.PROTECT,
+        blank=True, null=True
+    )
     pickup_address = models.CharField(max_length=255)
     pickup_latitude = models.DecimalField(**COORDINATE)
     pickup_longitude = models.DecimalField(**COORDINATE)
@@ -239,6 +301,30 @@ class Transfer(models.Model):
     def save(self, *args, **kwargs):
         self.end_time = self.pickup_time + timedelta(minutes=self.duration)
         return super().save(*args, **kwargs)
+
+
+class Leg(models.Model):
+    transfer = models.ForeignKey(
+        Transfer,
+        related_name='legs',
+        on_delete=models.CASCADE
+    )
+    start_latitude = models.DecimalField(max_digits=10, decimal_places=6)
+    start_longitude = models.DecimalField(max_digits=10, decimal_places=6)
+    start_address = models.TextField()
+    start_time = models.DateTimeField()
+    end_latitude = models.DecimalField(max_digits=10, decimal_places=6)
+    end_longitude = models.DecimalField(max_digits=10, decimal_places=6)
+    end_address = models.TextField()
+    end_time = models.DateTimeField()
+    order = models.PositiveSmallIntegerField()
+    route = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f'transfer_id: {self.transfer_id}, order: {self.order}'
 
 
 class Transaction(models.Model):

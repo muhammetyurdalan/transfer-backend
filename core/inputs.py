@@ -163,6 +163,20 @@ class UpdateVehicle:
 # Transfer
 
 @sb.input
+class CreateLeg:
+    start_latitude: Decimal = required('4.6')
+    start_longitude: Decimal = required('4.6')
+    start_address: str = required()
+    start_time: datetime = required('timezone aware')
+    end_latitude: Decimal = required('4.6')
+    end_longitude: Decimal = required('4.6')
+    end_address: str = required()
+    end_time: datetime = required('after start_time')
+    order: Optional[int] = optional('default: position in the list')
+    route: Optional[str] = optional()
+
+
+@sb.input
 class CreateTransfer:
     pickup_address: str = required('255 chars max')
     pickup_latitude: Decimal = required('3.6')
@@ -170,6 +184,8 @@ class CreateTransfer:
     dropoff_address: str = required('255 chars max')
     dropoff_latitude: Decimal = required('3.6')
     dropoff_longitude: Decimal = required('3.6')
+    pickup_district_name: str = required('at least one must be found')
+    dropoff_district_name: str = required('at least one must be found')
     pickup_time: datetime = required('future, timezone aware')
     distance: Decimal = required('route distance in km, > 0, 6.2')
     duration: int = required('route duration in minutes, > 0')
@@ -181,6 +197,7 @@ class CreateTransfer:
     passenger_phone: Optional[str] = optional('20 chars max')
     flight_number: Optional[str] = optional('10 chars max')
     note: Optional[str] = optional()
+    legs: Optional[List[CreateLeg]] = optional()
 
 
 @sb.input
@@ -192,6 +209,12 @@ class UpdateTransfer:
     dropoff_address: Optional[str] = optional('255 chars max')
     dropoff_latitude: Optional[Decimal] = optional('3.6')
     dropoff_longitude: Optional[Decimal] = optional('3.6')
+    pickup_district_name: Optional[str] = optional(
+        'with a new pickup address'
+    )
+    dropoff_district_name: Optional[str] = optional(
+        'with a new dropoff address'
+    )
     pickup_time: Optional[datetime] = optional('future, timezone aware')
     distance: Optional[Decimal] = optional('route distance in km, > 0')
     duration: Optional[int] = optional('route duration in minutes, > 0')

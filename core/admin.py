@@ -6,8 +6,8 @@ from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from modeltranslation.admin import TranslationAdmin
 from core.models import (
-    Message, Notification, ThroughMessage, Transaction, Transfer, User,
-    Vehicle, VehicleCategory
+    City, District, Leg, Message, Notification, State, ThroughMessage,
+    Transaction, Transfer, User, Vehicle, VehicleCategory
 )
 
 
@@ -99,6 +99,27 @@ class NotificationAdmin(admin.ModelAdmin):
     raw_id_fields = ['user']
 
 
+@admin.register(State)
+class StateAdmin(admin.ModelAdmin):
+    list_display = ['id', 'name', 'code']
+    search_fields = ['name', 'code']
+
+
+@admin.register(City)
+class CityAdmin(admin.ModelAdmin):
+    list_display = ['id', 'name', 'state']
+    list_filter = ['state']
+    search_fields = ['name']
+
+
+@admin.register(District)
+class DistrictAdmin(admin.ModelAdmin):
+    list_display = ['id', 'name', 'city', 'is_active']
+    list_filter = ['is_active', 'city__state']
+    search_fields = ['name', 'city__name']
+    raw_id_fields = ['city']
+
+
 @admin.register(VehicleCategory)
 class VehicleCategoryAdmin(TranslationAdmin):
     list_display = [
@@ -120,18 +141,27 @@ class VehicleAdmin(admin.ModelAdmin):
     raw_id_fields = ['driver']
 
 
+class LegInline(admin.TabularInline):
+    model = Leg
+    extra = 0
+
+
 @admin.register(Transfer)
 class TransferAdmin(admin.ModelAdmin):
     list_display = [
         'id', 'customer_id', 'operator_id', 'driver_id', 'vehicle_category',
         'status', 'pickup_time', 'price', 'currency'
     ]
-    list_filter = ['status', 'vehicle_category']
+    list_filter = ['status', 'vehicle_category', 'state']
     search_fields = [
         'passenger_name', 'flight_number', 'customer__email',
         'pickup_address', 'dropoff_address'
     ]
-    raw_id_fields = ['customer', 'operator', 'driver', 'vehicle']
+    raw_id_fields = [
+        'customer', 'operator', 'driver', 'vehicle', 'pickup_district',
+        'dropoff_district'
+    ]
+    inlines = [LegInline]
 
 
 @admin.register(Transaction)

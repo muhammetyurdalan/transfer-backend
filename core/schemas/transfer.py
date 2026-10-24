@@ -29,6 +29,8 @@ ROUTE_FIELDS = [
     'pickup_time', 'distance', 'duration', 'passenger_count',
     'luggage_count', 'child_seat_count', 'needs_wheelchair'
 ]
+DISTRICT_NAME_FIELDS = ['pickup_district_name', 'dropoff_district_name']
+IGNORED_CREATE_FIELDS = [*DISTRICT_NAME_FIELDS, 'legs']
 
 
 async def get_transfer(user, id, statuses=None, expand=()):
@@ -148,6 +150,52 @@ def check_transfer(transfer):
     transfer.distance = transfer.distance.quantize(ZERO)
 
 
+async def get_district(transfer, data, prefix):
+    """By name if given, otherwise the transfer's current district."""
+    districts = models.District.objects.values('id', 'city__state_id')
+    name = getattr(data, f'{prefix}_district_name')
+    if name:
+        filters = {'name__iexact': name.strip(), 'is_active': True}
+        return await districts.filter(**filters).afirst()
+    district_id = getattr(transfer, f'{prefix}_district_id')
+    if district_id:
+        return await districts.filter(pk=district_id).afirst()
+    return None
+
+
+async def set_districts(transfer, data):
+    """
+    Sets the pickup and dropoff districts. At least one must be found, the
+    state is the pickup district's state, or the dropoff's if not found.
+    """
+    pickup = await get_district(transfer, data, 'pickup')
+    dropoff = await get_district(transfer, data, 'dropoff')
+    assert pickup or dropoff, dumps({'code': 'ERR035'})
+    transfer.pickup_district_id = pickup['id'] if pickup else None
+    transfer.dropoff_district_id = dropoff['id'] if dropoff else None
+    transfer.state_id = (pickup or dropoff)['city__state_id']
+
+
+def check_legs(legs):
+    for leg in legs or []:
+        valid = (
+            leg.start_time < leg.end_time
+            and (leg.order is sb.UNSET or leg.order is None or leg.order >= 0)
+        )
+        assert valid, dumps({'code': 'ERR030'})
+
+
+async def set_legs(transfer, legs):
+    """Saves the legs, order defaults to the position in the list."""
+    instances = []
+    for index, data in enumerate(legs or []):
+        leg = models.Leg(transfer=transfer, order=index)
+        utils.set_attributes(leg, data, set_nulls=False)
+        instances.append(leg)
+    if instances:
+        await models.Leg.objects.abulk_create(instances)
+
+
 def check_pickup_time(pickup_time):
     assert pickup_time > timezone.now(), dumps({'code': 'ERR016'})
 
@@ -178,10 +226,14 @@ class Mutation:
         """Creates a PENDING transfer and returns its vehicle options."""
         user = info.context['user']
         transfer = models.Transfer(customer=user)
-        utils.set_attributes(transfer, data, set_nulls=False)
+        ignored = IGNORED_CREATE_FIELDS
+        utils.set_attributes(transfer, data, ignored=ignored, set_nulls=False)
         check_transfer(transfer)
         check_pickup_time(transfer.pickup_time)
+        check_legs(data.legs)
+        await set_districts(transfer, data)
         await transfer.asave()
+        await set_legs(transfer, data.legs)
         activate(user.language)
         vehicle_options = await get_vehicle_options(transfer)
         return outputs.TransferResponse(
@@ -202,11 +254,13 @@ class Mutation:
         user = info.context['user']
         expand = ['customer']
         transfer = await get_transfer(user, data.id, EDITABLE_STATUSES, expand)
-        ignored = ['id']
+        ignored = ['id', *DISTRICT_NAME_FIELDS]
         utils.set_attributes(transfer, data, ignored=ignored, set_nulls=False)
         check_transfer(transfer)
         check_pickup_time(transfer.pickup_time)
         fields = utils.get_fields(data)
+        if any(fields.get(key) for key in DISTRICT_NAME_FIELDS):
+            await set_districts(transfer, data)
         if any(fields.get(key) is not None for key in ROUTE_FIELDS):
             await psp.expire_payment_link(transfer)
             clear_vehicle_selection(transfer)

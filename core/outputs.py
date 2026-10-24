@@ -180,6 +180,28 @@ class VehicleCategoriesPaginated:
     count: Optional[int]
 
 
+# Location
+
+@sbd.type(models.State, exclude=['cities', 'transfers'])
+class State:
+    pass
+
+
+@sbd.type(models.City, exclude=['districts'])
+class City:
+    state_id: sb.ID
+    state: Optional[State]
+
+
+@sbd.type(
+    models.District,
+    exclude=['pickup_transfers', 'dropoff_transfers']
+)
+class District:
+    city_id: sb.ID
+    city: Optional[City]
+
+
 # Vehicle
 
 @sbd.filter_type(models.Vehicle)
@@ -225,6 +247,9 @@ class TransferFilter:
     driver_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
     vehicle_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
     vehicle_category_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
+    state_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
+    pickup_district_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
+    dropoff_district_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
     pickup_time: Optional[sbd.DatetimeFilterLookup] = sb.UNSET
     passenger_name: Optional[sbd.StrFilterLookup] = sb.UNSET
     flight_number: Optional[sbd.StrFilterLookup] = sb.UNSET
@@ -238,6 +263,11 @@ class TransferOrder:
     created_at: sb.auto
 
 
+@sbd.type(models.Leg, exclude=['transfer'])
+class Leg:
+    transfer_id: sb.ID
+
+
 @sbd.type(
     models.Transfer,
     exclude=['messages', 'through_messages', 'transactions', 'psp_data']
@@ -248,11 +278,18 @@ class Transfer:
     driver_id: Optional[sb.ID]
     vehicle_id: Optional[sb.ID]
     vehicle_category_id: Optional[sb.ID]
+    state_id: Optional[sb.ID]
+    pickup_district_id: Optional[sb.ID]
+    dropoff_district_id: Optional[sb.ID]
     customer: Optional[User]
     operator: Optional[User]
     driver: Optional[User]
     vehicle: Optional[Vehicle]
     vehicle_category: Optional[VehicleCategory]
+    state: Optional[State]
+    pickup_district: Optional[District]
+    dropoff_district: Optional[District]
+    legs: Optional[List[Leg]]
     status: Optional[enums.TransferStatus]
     currency: Optional[enums.Currency]
 

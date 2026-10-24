@@ -46,6 +46,7 @@ mutation($data: CreateVehicle!) {
 '''
 TRANSFER_FIELDS = '''
   id status price currency vehicleCategoryId driverId vehicleId operatorId
+  stateId pickupDistrictId dropoffDistrictId
 '''
 OPTION_FIELDS = '''
   vehicleCategory { id name } distance duration price currency
@@ -140,6 +141,22 @@ class GraphQLTestCase(TestCase):
         self.other_driver = create('driver2@example.com', 'DRIVER')
         self.admin = create('admin@example.com', 'ADMIN')
         self.staff = create('staff@example.com', 'STAFF')
+        self.turkey = models.State.objects.create(name='Turkey', code='TR')
+        self.greece = models.State.objects.create(name='Greece', code='GR')
+        istanbul = models.City.objects.create(state=self.turkey, name='Istanbul')
+        athens = models.City.objects.create(state=self.greece, name='Athens')
+        self.arnavutkoy = models.District.objects.create(
+            city=istanbul, name='Arnavutkoy'
+        )
+        self.beyoglu = models.District.objects.create(
+            city=istanbul, name='Beyoglu'
+        )
+        self.glyfada = models.District.objects.create(
+            city=athens, name='Glyfada'
+        )
+        models.District.objects.create(
+            city=athens, name='Closed', is_active=False
+        )
         self.sedan = models.VehicleCategory.objects.create(
             name_en='Sedan', name_tr='Binek', max_passengers=3,
             max_luggage=3, base_fare='100.00', per_km_price='10.00',
@@ -204,6 +221,8 @@ class GraphQLTestCase(TestCase):
             'pickupLatitude': '41.275300', 'pickupLongitude': '28.751900',
             'dropoffAddress': 'Taksim Square',
             'dropoffLatitude': '41.036900', 'dropoffLongitude': '28.985000',
+            'pickupDistrictName': 'Arnavutkoy',
+            'dropoffDistrictName': 'Beyoglu',
             'pickupTime': pickup.isoformat(),
             'distance': '40.5', 'duration': 50,
             'passengerName': 'Ada Lovelace', 'passengerCount': 2,
@@ -376,6 +395,106 @@ class TransferTests(GraphQLTestCase):
             CREATE_TRANSFER, {'data': self.transfer_data()}, user=self.driver
         )
         self.assertEqual(self.error_code(result), 'ERR001')
+
+    async def test_create_transfer_saves_legs(self):
+        start = timezone.now() + timedelta(days=2)
+
+        def leg(address, hours, **kwargs):
+            return {
+                'startLatitude': '41.275300', 'startLongitude': '28.751900',
+                'startAddress': address,
+                'startTime': (start + timedelta(hours=hours)).isoformat(),
+                'endLatitude': '41.036900', 'endLongitude': '28.985000',
+                'endAddress': f'{address} end',
+                'endTime': (start + timedelta(hours=hours + 1)).isoformat(),
+                **kwargs
+            }
+
+        legs = [leg('First', 0, route='encoded'), leg('Second', 2)]
+        query = CREATE_TRANSFER.replace(
+            'transfer {', 'transfer { legs { order startAddress route }', 1
+        )
+        result = await self.execute(
+            query, {'data': self.transfer_data(legs=legs)}, self.customer
+        )
+        transfer = self.ok(result, 'createTransfer')['transfer']
+        self.assertEqual(transfer['legs'], [
+            {'order': 0, 'startAddress': 'First', 'route': 'encoded'},
+            {'order': 1, 'startAddress': 'Second', 'route': ''},
+        ])
+        created = await self.create_transfer()
+        self.assertFalse(
+            await models.Leg.objects.filter(
+                transfer_id=created['transfer']['id']
+            ).aexists()
+        )
+        invalid = [leg('Bad', 0, endTime=start.isoformat())]
+        result = await self.execute(
+            CREATE_TRANSFER, {'data': self.transfer_data(legs=invalid)},
+            self.customer
+        )
+        self.assertEqual(self.error_code(result), 'ERR030')
+        self.assertEqual(await models.Transfer.objects.acount(), 2)
+
+    async def test_create_transfer_sets_districts_and_state(self):
+        def ids(transfer):
+            keys = ['pickupDistrictId', 'dropoffDistrictId', 'stateId']
+            return [transfer[key] for key in keys]
+
+        def expected(pickup, dropoff, state):
+            return [str(i.id) if i else None for i in (pickup, dropoff, state)]
+
+        cases = [
+            (
+                {'pickupDistrictName': ' arnavutkoy ',
+                 'dropoffDistrictName': 'BEYOGLU'},
+                (self.arnavutkoy, self.beyoglu, self.turkey)
+            ),
+            (
+                {'dropoffDistrictName': 'Glyfada'},
+                (self.arnavutkoy, self.glyfada, self.turkey)
+            ),
+            (
+                {'pickupDistrictName': 'Unknown',
+                 'dropoffDistrictName': 'Glyfada'},
+                (None, self.glyfada, self.greece)
+            ),
+            (
+                {'dropoffDistrictName': 'Closed'},
+                (self.arnavutkoy, None, self.turkey)
+            ),
+        ]
+        for kwargs, districts in cases:
+            created = await self.create_transfer(**kwargs)
+            self.assertEqual(
+                ids(created['transfer']), expected(*districts), kwargs
+            )
+        data = self.transfer_data(
+            pickupDistrictName='Unknown', dropoffDistrictName='Closed'
+        )
+        result = await self.execute(
+            CREATE_TRANSFER, {'data': data}, user=self.customer
+        )
+        self.assertEqual(self.error_code(result), 'ERR035')
+        self.assertEqual(await models.Transfer.objects.acount(), len(cases))
+
+    async def test_update_transfer_districts(self):
+        created = await self.create_transfer()
+        transfer_id = created['transfer']['id']
+        data = {'id': transfer_id, 'pickupDistrictName': 'Glyfada'}
+        result = await self.execute(UPDATE_TRANSFER, {'data': data}, self.customer)
+        transfer = self.ok(result, 'updateTransfer')['transfer']
+        self.assertEqual(transfer['pickupDistrictId'], str(self.glyfada.id))
+        self.assertEqual(transfer['dropoffDistrictId'], str(self.beyoglu.id))
+        self.assertEqual(transfer['stateId'], str(self.greece.id))
+        data = {'id': transfer_id, 'pickupDistrictName': 'Unknown'}
+        result = await self.execute(UPDATE_TRANSFER, {'data': data}, self.customer)
+        transfer = self.ok(result, 'updateTransfer')['transfer']
+        self.assertIsNone(transfer['pickupDistrictId'])
+        self.assertEqual(transfer['stateId'], str(self.turkey.id))
+        data = {'id': transfer_id, 'dropoffDistrictName': 'Unknown'}
+        result = await self.execute(UPDATE_TRANSFER, {'data': data}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR035')
 
     async def test_pay_transfer(self):
         created = await self.create_transfer(passengerCount=5)
