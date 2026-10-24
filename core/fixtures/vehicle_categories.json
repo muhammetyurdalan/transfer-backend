@@ -1,0 +1,158 @@
+[
+    {
+        "model": "core.VehicleCategory",
+        "pk": 1,
+        "fields": {
+            "state": 1,
+            "passenger_capacity": 5,
+            "fuel_consumption": 10,
+            "rental_cost": "1000.00",
+            "starting_price": "7.00",
+            "per_hour_rate": "5.00",
+            "penalty_per_minute": "0.60"
+        }
+    },
+    {
+        "model": "core.VehicleCategory",
+        "pk": 2,
+        "fields": {
+            "state": 1,
+            "passenger_capacity": 12,
+            "fuel_consumption": 13,
+            "rental_cost": "3000.00",
+            "starting_price": "10.00",
+            "per_hour_rate": "8.00",
+            "penalty_per_minute": "0.70"
+        }
+    },
+    {
+        "model": "core.VehicleCategory",
+        "pk": 3,
+        "fields": {
+            "state": 1,
+            "passenger_capacity": 26,
+            "fuel_consumption": 21,
+            "rental_cost": "4000.00",
+            "starting_price": "12.00",
+            "per_hour_rate": "10.00",
+            "penalty_per_minute": "1.00"
+        }
+    },
+    {
+        "model": "core.VehicleCategory",
+        "pk": 4,
+        "fields": {
+            "state": 1,
+            "passenger_capacity": 45,
+            "fuel_consumption": 30,
+            "rental_cost": "6000.00",
+            "starting_price": "12.00",
+            "per_hour_rate": "12.00",
+            "penalty_per_minute": "1.20"
+        }
+    },
+    {
+        "model": "core.VehicleCategory",
+        "pk": 5,
+        "fields": {
+            "state": 2,
+            "passenger_capacity": 7,
+            "fuel_consumption": 18,
+            "rental_cost": "15000.00",
+            "starting_price": "17.00",
+            "per_hour_rate": "70.00",
+            "penalty_per_minute": "1.20"
+        }
+    },
+    {
+        "model": "core.VehicleCategory",
+        "pk": 6,
+        "fields": {
+            "state": 2,
+            "passenger_capacity": 12,
+            "fuel_consumption": 25,
+            "rental_cost": "20000.00",
+            "starting_price": "20.00",
+            "per_hour_rate": "80.00",
+            "penalty_per_minute": "1.40" 
+        }
+    },
+    {
+        "model": "core.VehicleCategory",
+        "pk": 7,
+        "fields": {
+            "state": 2,
+            "passenger_capacity": 24,
+            "fuel_consumption": 30,
+            "rental_cost": "25000.00",
+            "starting_price": "25.00",
+            "per_hour_rate": "100.00",
+            "penalty_per_minute": "1.80" 
+        }
+    },
+    {
+        "model": "core.VehicleCategory",
+        "pk": 8,
+        "fields": {
+            "state": 2,
+            "passenger_capacity": 45,
+            "fuel_consumption": 35,
+            "rental_cost": "30000.00",
+            "starting_price": "30.00",
+            "per_hour_rate": "120.00",
+            "penalty_per_minute": "2.10" 
+        }
+    },
+    {
+        "model": "core.VehicleCategory",
+        "pk": 9,
+        "fields": {
+            "state": 3,
+            "passenger_capacity": 7,
+            "fuel_consumption": 18,
+            "rental_cost": "15000.00",
+            "starting_price": "17.00",
+            "per_hour_rate": "70.00",
+            "penalty_per_minute": "1.20"
+        }
+    },
+    {
+        "model": "core.VehicleCategory",
+        "pk": 10,
+        "fields": {
+            "state": 3,
+            "passenger_capacity": 12,
+            "fuel_consumption": 25,
+            "rental_cost": "20000.00",
+            "starting_price": "20.00",
+            "per_hour_rate": "80.00",
+            "penalty_per_minute": "1.40" 
+        }
+    },
+    {
+        "model": "core.VehicleCategory",
+        "pk": 11,
+        "fields": {
+            "state": 3,
+            "passenger_capacity": 24,
+            "fuel_consumption": 30,
+            "rental_cost": "25000.00",
+            "starting_price": "25.00",
+            "per_hour_rate": "100.00",
+            "penalty_per_minute": "1.80" 
+        }
+    },
+    {
+        "model": "core.VehicleCategory",
+        "pk": 12,
+        "fields": {
+            "state": 3,
+            "passenger_capacity": 45,
+            "fuel_consumption": 35,
+            "rental_cost": "30000.00",
+            "starting_price": "30.00",
+            "per_hour_rate": "120.00",
+            "penalty_per_minute": "2.10" 
+        }
+    } 
+]

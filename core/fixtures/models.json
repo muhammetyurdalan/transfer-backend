@@ -1,0 +1,194 @@
+[
+    {
+        "model": "core.Model",
+        "pk": 1,
+        "fields": {
+            "name": "CUSTOM",
+            "make": 1
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 2,
+        "fields": {
+            "name": "TRANSIT",
+            "make": 1
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 3,
+        "fields": {
+            "name": "NOVA",
+            "make": 2
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 4,
+        "fields": {
+            "name": "TURKUAZ",
+            "make": 2
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 5,
+        "fields": {
+            "name": "FORTUNA",
+            "make": 3
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 6,
+        "fields": {
+            "name": "TGE",
+            "make": 3
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 7,
+        "fields": {
+            "name": "MAYBACK",
+            "make": 4
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 8,
+        "fields": {
+            "name": "SPRINTER",
+            "make": 4
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 9,
+        "fields": {
+            "name": "VITO",
+            "make": 4
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 10,
+        "fields": {
+            "name": "TOURISMO",
+            "make": 5
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 11,
+        "fields": {
+            "name": "TRAVEGO",
+            "make": 5
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 12,
+        "fields": {
+            "name": "403",
+            "make": 5
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 13,
+        "fields": {
+            "name": "CITYLINER",
+            "make": 6
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 14,
+        "fields": {
+            "name": "TOURLINER",
+            "make": 6
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 15,
+        "fields": {
+            "name": "DORUK",
+            "make": 7
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 16,
+        "fields": {
+            "name": "SULTAN",
+            "make": 7
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 17,
+        "fields": {
+            "name": "EXPERT",
+            "make": 8
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 18,
+        "fields": {
+            "name": "S SERISI",
+            "make": 9
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 19,
+        "fields": {
+            "name": "MARATON",
+            "make": 10
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 20,
+        "fields": {
+            "name": "PRESTIJ",
+            "make": 10
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 21,
+        "fields": {
+            "name": "SAFIR",
+            "make": 10
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 22,
+        "fields": {
+            "name": "CARAVELLA",
+            "make": 11
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 23,
+        "fields": {
+            "name": "CRAFTER",
+            "make": 11
+        }
+    },
+    {
+        "model": "core.Model",
+        "pk": 24,
+        "fields": {
+            "name": "TRANSPORTER",
+            "make": 11
+        }
+    }
+]

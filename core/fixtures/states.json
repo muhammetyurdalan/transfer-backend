@@ -1,0 +1,30 @@
+[
+    {
+        "model": "core.State",
+        "pk": 1,
+        "fields": {
+            "name": "TÜRKİYE",
+            "code": "TR",
+            "language": "tr",
+            "fuel_price": "1.00",
+            "platform_commission_rate": "0.20",
+            "psp_commission_rate": "0.05",
+            "partner_commission_rate": "0.10",
+            "cfar_rate": "0.15"
+        }
+    },
+    {
+        "model": "core.State",
+        "pk": 1,
+        "fields": {
+            "name": "CALIFORNIA",
+            "code": "CA",
+            "language": "en",
+            "fuel_price": "1.80",
+            "platform_commission_rate": "0.20",
+            "psp_commission_rate": "0.05",
+            "partner_commission_rate": "0.10",
+            "cfar_rate": "0.15"
+        }
+    }
+]

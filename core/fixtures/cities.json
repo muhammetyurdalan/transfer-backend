@@ -1,0 +1,1114 @@
+[
+    {
+        "model": "core.City",
+        "pk": 1,
+        "fields": {
+            "state": 1,
+            "name": "ADANA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 2,
+        "fields": {
+            "state": 1,
+            "name": "ADIYAMAN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 3,
+        "fields": {
+            "state": 1,
+            "name": "AFYONKARAHİSAR"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 4,
+        "fields": {
+            "state": 1,
+            "name": "AĞRI"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 5,
+        "fields": {
+            "state": 1,
+            "name": "AMASYA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 6,
+        "fields": {
+            "state": 1,
+            "name": "ANKARA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 7,
+        "fields": {
+            "state": 1,
+            "name": "ANTALYA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 8,
+        "fields": {
+            "state": 1,
+            "name": "ARTVİN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 9,
+        "fields": {
+            "state": 1,
+            "name": "AYDIN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 10,
+        "fields": {
+            "state": 1,
+            "name": "BALIKESİR"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 11,
+        "fields": {
+            "state": 1,
+            "name": "BİLECİK"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 12,
+        "fields": {
+            "state": 1,
+            "name": "BİNGÖL"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 13,
+        "fields": {
+            "state": 1,
+            "name": "BİTLİS"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 14,
+        "fields": {
+            "state": 1,
+            "name": "BOLU"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 15,
+        "fields": {
+            "state": 1,
+            "name": "BURDUR"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 16,
+        "fields": {
+            "state": 1,
+            "name": "BURSA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 17,
+        "fields": {
+            "state": 1,
+            "name": "ÇANAKKALE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 18,
+        "fields": {
+            "state": 1,
+            "name": "ÇANKIRI"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 19,
+        "fields": {
+            "state": 1,
+            "name": "ÇORUM"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 20,
+        "fields": {
+            "state": 1,
+            "name": "DENİZLİ"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 21,
+        "fields": {
+            "state": 1,
+            "name": "DİYARBAKIR"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 22,
+        "fields": {
+            "state": 1,
+            "name": "EDİRNE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 23,
+        "fields": {
+            "state": 1,
+            "name": "ELAZIĞ"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 24,
+        "fields": {
+            "state": 1,
+            "name": "ERZİNCAN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 25,
+        "fields": {
+            "state": 1,
+            "name": "ERZURUM"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 26,
+        "fields": {
+            "state": 1,
+            "name": "ESKİŞEHİR"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 27,
+        "fields": {
+            "state": 1,
+            "name": "GAZİANTEP"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 28,
+        "fields": {
+            "state": 1,
+            "name": "GİRESUN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 29,
+        "fields": {
+            "state": 1,
+            "name": "GÜMÜŞHANE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 30,
+        "fields": {
+            "state": 1,
+            "name": "HAKKARİ"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 31,
+        "fields": {
+            "state": 1,
+            "name": "HATAY"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 32,
+        "fields": {
+            "state": 1,
+            "name": "ISPARTA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 33,
+        "fields": {
+            "state": 1,
+            "name": "MERSİN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 34,
+        "fields": {
+            "state": 1,
+            "name": "İSTANBUL"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 35,
+        "fields": {
+            "state": 1,
+            "name": "İZMİR"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 36,
+        "fields": {
+            "state": 1,
+            "name": "KARS"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 37,
+        "fields": {
+            "state": 1,
+            "name": "KASTAMONU"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 38,
+        "fields": {
+            "state": 1,
+            "name": "KAYSERİ"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 39,
+        "fields": {
+            "state": 1,
+            "name": "KIRKLARELİ"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 40,
+        "fields": {
+            "state": 1,
+            "name": "KIRŞEHİR"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 41,
+        "fields": {
+            "state": 1,
+            "name": "KOCAELİ"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 42,
+        "fields": {
+            "state": 1,
+            "name": "KONYA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 43,
+        "fields": {
+            "state": 1,
+            "name": "KÜTAHYA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 44,
+        "fields": {
+            "state": 1,
+            "name": "MALATYA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 45,
+        "fields": {
+            "state": 1,
+            "name": "MANİSA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 46,
+        "fields": {
+            "state": 1,
+            "name": "KAHRAMANMARAŞ"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 47,
+        "fields": {
+            "state": 1,
+            "name": "MARDİN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 48,
+        "fields": {
+            "state": 1,
+            "name": "MUĞLA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 49,
+        "fields": {
+            "state": 1,
+            "name": "MUŞ"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 50,
+        "fields": {
+            "state": 1,
+            "name": "NEVŞEHİR"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 51,
+        "fields": {
+            "state": 1,
+            "name": "NİĞDE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 52,
+        "fields": {
+            "state": 1,
+            "name": "ORDU"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 53,
+        "fields": {
+            "state": 1,
+            "name": "RİZE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 54,
+        "fields": {
+            "state": 1,
+            "name": "SAKARYA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 55,
+        "fields": {
+            "state": 1,
+            "name": "SAMSUN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 56,
+        "fields": {
+            "state": 1,
+            "name": "SİİRT"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 57,
+        "fields": {
+            "state": 1,
+            "name": "SİNOP"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 58,
+        "fields": {
+            "state": 1,
+            "name": "SİVAS"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 59,
+        "fields": {
+            "state": 1,
+            "name": "TEKİRDAĞ"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 60,
+        "fields": {
+            "state": 1,
+            "name": "TOKAT"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 61,
+        "fields": {
+            "state": 1,
+            "name": "TRABZON"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 62,
+        "fields": {
+            "state": 1,
+            "name": "TUNCELİ"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 63,
+        "fields": {
+            "state": 1,
+            "name": "ŞANLIURFA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 64,
+        "fields": {
+            "state": 1,
+            "name": "UŞAK"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 65,
+        "fields": {
+            "state": 1,
+            "name": "VAN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 66,
+        "fields": {
+            "state": 1,
+            "name": "YOZGAT"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 67,
+        "fields": {
+            "state": 1,
+            "name": "ZONGULDAK"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 68,
+        "fields": {
+            "state": 1,
+            "name": "AKSARAY"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 69,
+        "fields": {
+            "state": 1,
+            "name": "BAYBURT"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 70,
+        "fields": {
+            "state": 1,
+            "name": "KARAMAN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 71,
+        "fields": {
+            "state": 1,
+            "name": "KIRIKKALE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 72,
+        "fields": {
+            "state": 1,
+            "name": "BATMAN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 73,
+        "fields": {
+            "state": 1,
+            "name": "ŞIRNAK"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 74,
+        "fields": {
+            "state": 1,
+            "name": "BARTIN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 75,
+        "fields": {
+            "state": 1,
+            "name": "ARDAHAN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 76,
+        "fields": {
+            "state": 1,
+            "name": "IĞDIR"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 77,
+        "fields": {
+            "state": 1,
+            "name": "YALOVA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 78,
+        "fields": {
+            "state": 1,
+            "name": "KARABÜK"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 79,
+        "fields": {
+            "state": 1,
+            "name": "KİLİS"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 80,
+        "fields": {
+            "state": 1,
+            "name": "OSMANİYE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 81,
+        "fields": {
+            "state": 1,
+            "name": "DÜZCE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 82,
+        "fields": {
+            "state": 2,
+            "name": "ALAMEDA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 83,
+        "fields": {
+            "state": 2,
+            "name": "ALPINE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 84,
+        "fields": {
+            "state": 2,
+            "name": "AMADOR"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 85,
+        "fields": {
+            "state": 2,
+            "name": "BUTTE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 86,
+        "fields": {
+            "state": 2,
+            "name": "CALAVERAS"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 87,
+        "fields": {
+            "state": 2,
+            "name": "COLUSA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 88,
+        "fields": {
+            "state": 2,
+            "name": "CONTRA COSTA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 89,
+        "fields": {
+            "state": 2,
+            "name": "DEL NORTE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 90,
+        "fields": {
+            "state": 2,
+            "name": "EL DORADO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 91,
+        "fields": {
+            "state": 2,
+            "name": "FRESNO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 92,
+        "fields": {
+            "state": 2,
+            "name": "GLENN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 93,
+        "fields": {
+            "state": 2,
+            "name": "HUMBOLDT"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 94,
+        "fields": {
+            "state": 2,
+            "name": "IMPERIAL"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 95,
+        "fields": {
+            "state": 2,
+            "name": "INYO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 96,
+        "fields": {
+            "state": 2,
+            "name": "KERN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 97,
+        "fields": {
+            "state": 2,
+            "name": "KINGS"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 98,
+        "fields": {
+            "state": 2,
+            "name": "LAKE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 99,
+        "fields": {
+            "state": 2,
+            "name": "LASSEN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 100,
+        "fields": {
+            "state": 2,
+            "name": "LOS ANGELES"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 101,
+        "fields": {
+            "state": 2,
+            "name": "MADERA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 102,
+        "fields": {
+            "state": 2,
+            "name": "MARIN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 103,
+        "fields": {
+            "state": 2,
+            "name": "MARIPOSA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 104,
+        "fields": {
+            "state": 2,
+            "name": "MENDOCINO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 105,
+        "fields": {
+            "state": 2,
+            "name": "MERCED"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 106,
+        "fields": {
+            "state": 2,
+            "name": "MODOC"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 107,
+        "fields": {
+            "state": 2,
+            "name": "MONO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 108,
+        "fields": {
+            "state": 2,
+            "name": "MONTEREY"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 109,
+        "fields": {
+            "state": 2,
+            "name": "NAPA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 110,
+        "fields": {
+            "state": 2,
+            "name": "NEVADA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 111,
+        "fields": {
+            "state": 2,
+            "name": "ORANGE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 112,
+        "fields": {
+            "state": 2,
+            "name": "PLACER"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 113,
+        "fields": {
+            "state": 2,
+            "name": "PLUMAS"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 114,
+        "fields": {
+            "state": 2,
+            "name": "RIVERSIDE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 115,
+        "fields": {
+            "state": 2,
+            "name": "SACRAMENTO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 116,
+        "fields": {
+            "state": 2,
+            "name": "SAN BENITO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 117,
+        "fields": {
+            "state": 2,
+            "name": "SAN BERNARDINO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 118,
+        "fields": {
+            "state": 2,
+            "name": "SAN DIEGO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 119,
+        "fields": {
+            "state": 2,
+            "name": "SAN FRANCISCO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 120,
+        "fields": {
+            "state": 2,
+            "name": "SAN JOAQUIN"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 121,
+        "fields": {
+            "state": 2,
+            "name": "SAN LUIS OBISPO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 122,
+        "fields": {
+            "state": 2,
+            "name": "SAN MATEO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 123,
+        "fields": {
+            "state": 2,
+            "name": "SANTA BARBARA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 124,
+        "fields": {
+            "state": 2,
+            "name": "SANTA CLARA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 125,
+        "fields": {
+            "state": 2,
+            "name": "SANTA CRUZ"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 126,
+        "fields": {
+            "state": 2,
+            "name": "SHASTA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 127,
+        "fields": {
+            "state": 2,
+            "name": "SIERRA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 128,
+        "fields": {
+            "state": 2,
+            "name": "SISKIYOU"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 129,
+        "fields": {
+            "state": 2,
+            "name": "SOLANO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 130,
+        "fields": {
+            "state": 2,
+            "name": "SONOMA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 131,
+        "fields": {
+            "state": 2,
+            "name": "STANISLAUS"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 132,
+        "fields": {
+            "state": 2,
+            "name": "SUTTER"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 133,
+        "fields": {
+            "state": 2,
+            "name": "TEHAMA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 134,
+        "fields": {
+            "state": 2,
+            "name": "TRINITY"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 135,
+        "fields": {
+            "state": 2,
+            "name": "TULARE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 136,
+        "fields": {
+            "state": 2,
+            "name": "TUOLUMNE"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 137,
+        "fields": {
+            "state": 2,
+            "name": "VENTURA"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 138,
+        "fields": {
+            "state": 2,
+            "name": "YOLO"
+        }
+    },
+    {
+        "model": "core.City",
+        "pk": 139,
+        "fields": {
+            "state": 2,
+            "name": "YUBA"
+        }
+    }
+]

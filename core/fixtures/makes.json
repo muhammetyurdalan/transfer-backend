@@ -1,0 +1,79 @@
+[
+    {
+        "model": "core.Make",
+        "pk": 1,
+        "fields": {
+            "name": "FORD"
+        }
+    },
+    {
+        "model": "core.Make",
+        "pk": 2,
+        "fields": {
+            "name": "ISUZU"
+        }
+    },
+    {
+        "model": "core.Make",
+        "pk": 3,
+        "fields": {
+            "name": "MAN"
+        }
+    },
+    {
+        "model": "core.Make",
+        "pk": 4,
+        "fields": {
+            "name": "MERCEDES"
+        }
+    },
+    {
+        "model": "core.Make",
+        "pk": 5,
+        "fields": {
+            "name": "MERCEDES BENZ"
+        }
+    },
+    {
+        "model": "core.Make",
+        "pk": 6,
+        "fields": {
+            "name": "NEOPLAN"
+        }
+    },
+    {
+        "model": "core.Make",
+        "pk": 7,
+        "fields": {
+            "name": "OTOKAR"
+        }
+    },
+    {
+        "model": "core.Make",
+        "pk": 8,
+        "fields": {
+            "name": "PEUGEOT"
+        }
+    },
+    {
+        "model": "core.Make",
+        "pk": 9,
+        "fields": {
+            "name": "SETRA"
+        }
+    },
+    {
+        "model": "core.Make",
+        "pk": 10,
+        "fields": {
+            "name": "TEMSA"
+        }
+    },
+    {
+        "model": "core.Make",
+        "pk": 11,
+        "fields": {
+            "name": "VOLKSWAGEN"
+        }
+    }
+]
