@@ -40,7 +40,6 @@ class User(AbstractBaseUser):
         default=enums.Language.EN
     )
     profile_image = models.FileField(upload_to=upload_to, blank=True)
-    # Payment microservice account data (driver payout account for tips)
     psp_data = models.JSONField(default=dict)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -93,7 +92,6 @@ class Notification(models.Model):
 
 
 class VehicleCategory(models.Model):
-    # name and description are translated (translation.py)
     name = models.CharField(max_length=50)
     description = models.TextField(blank=True)
     image = models.FileField(upload_to=upload_to, blank=True)
@@ -101,7 +99,6 @@ class VehicleCategory(models.Model):
     max_luggage = models.PositiveSmallIntegerField()
     child_seat_capacity = models.PositiveSmallIntegerField(default=0)
     is_wheelchair_accessible = models.BooleanField(default=False)
-    # price = max(minimum_fare, base_fare + km * per_km + minute * per_minute)
     base_fare = models.DecimalField(**DECIMAL_10_ZERO)
     per_km_price = models.DecimalField(**DECIMAL_10_ZERO)
     per_minute_price = models.DecimalField(**DECIMAL_10_ZERO)
@@ -180,14 +177,12 @@ class Transfer(models.Model):
         on_delete=models.SET_NULL,
         blank=True, null=True
     )
-    # Chosen by the customer while paying, final once the payment succeeds
     vehicle_category = models.ForeignKey(
         VehicleCategory,
         related_name='transfers',
         on_delete=models.PROTECT,
         blank=True, null=True
     )
-    # Assigned by the operator together with the driver
     vehicle = models.ForeignKey(
         Vehicle,
         related_name='transfers',
@@ -206,7 +201,6 @@ class Transfer(models.Model):
     dropoff_latitude = models.DecimalField(**COORDINATE)
     dropoff_longitude = models.DecimalField(**COORDINATE)
     pickup_time = models.DateTimeField()
-    # Estimated end, pickup_time + duration (set in save)
     end_time = models.DateTimeField(editable=False)
     distance = models.DecimalField(
         max_digits=8, decimal_places=2,
@@ -253,7 +247,6 @@ class Transaction(models.Model):
         related_name='transactions',
         on_delete=models.CASCADE
     )
-    # Payer for PAYMENT and TIP, receiver for REFUND (always the customer)
     user = models.ForeignKey(
         User,
         related_name='transactions',
@@ -263,7 +256,6 @@ class Transaction(models.Model):
         max_length=10,
         choices=enums.TransactionCategory.choices
     )
-    # REFUND: the refunded PAYMENT or TIP
     parent = models.ForeignKey(
         'self',
         related_name='refunds',
