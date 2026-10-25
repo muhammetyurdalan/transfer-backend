@@ -251,6 +251,8 @@ class TransferFilter:
     pickup_district_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
     dropoff_district_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
     pickup_time: Optional[sbd.DatetimeFilterLookup] = sb.UNSET
+    pickup_address: Optional[sbd.StrFilterLookup] = sb.UNSET
+    dropoff_address: Optional[sbd.StrFilterLookup] = sb.UNSET
     passenger_name: Optional[sbd.StrFilterLookup] = sb.UNSET
     flight_number: Optional[sbd.StrFilterLookup] = sb.UNSET
     created_at: Optional[sbd.DatetimeFilterLookup] = sb.UNSET
