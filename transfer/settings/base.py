@@ -6,7 +6,7 @@ from pathlib import Path
 # Path Settings
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(BASE_DIR / '.env')
+load_dotenv(BASE_DIR / '.env.dev')
 
 
 def env(key, default=None):
@@ -33,8 +33,9 @@ CODE_EXPIRE_SECONDS = 180
 MESSAGE_UPDATE_WINDOW_HOURS = 1
 MESSAGE_FILE_MAX_SIZE = 2 * 1024 * 1024
 
-DEBUG = False
+DEBUG = True
 ALLOWED_HOSTS = env_list('ALLOWED_HOSTS', '127.0.0.1,localhost')
+CORS_ALLOW_ALL=True
 CORS_ALLOWED_ORIGINS = env_list('CORS_ALLOWED_ORIGINS')
 CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
 
