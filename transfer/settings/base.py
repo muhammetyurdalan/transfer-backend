@@ -23,6 +23,7 @@ def env_bool(key, default=False):
 
 # Security Settings
 
+ADMIN_CODE = env('ADMIN_CODE')
 SECRET_KEY = env('SECRET_KEY')
 JWT_SECRET = env('JWT_SECRET', SECRET_KEY)
 JWT_ALGORITHM = 'HS256'
