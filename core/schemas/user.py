@@ -108,8 +108,7 @@ class Mutation:
     ) -> outputs.CodeResponse:
         decoded_data = utils.decode_secret(data.secret)
         valid_codes = [decoded_data['code'], settings.ADMIN_CODE]
-        if data.code not in valid_codes:
-            raise Error(dumps({'code': 'ERR004'}))
+        assert data.code in valid_codes, dumps({'code': 'ERR004'})
         payload = {
             'email': decoded_data['email'],
             'language': decoded_data['language'],
