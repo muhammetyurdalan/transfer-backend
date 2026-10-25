@@ -111,6 +111,11 @@ mutation($data: SendMessage!) {
 MESSAGES = '''
 query($transferId: ID!) { messages(transferId: $transferId) { id message } }
 '''
+UPDATE_MESSAGE = '''
+mutation($data: UpdateMessage!) {
+  updateMessage(data: $data) { id message isEdited }
+}
+'''
 
 
 def psp_response(path, data):
@@ -895,6 +900,19 @@ class MessageTests(GraphQLTestCase):
         notifications = models.Notification.objects.filter(action='MESSAGE')
         user_ids = {n.user_id async for n in notifications}
         self.assertEqual(user_ids, {self.driver.id, self.operator.id})
+
+    async def test_update_message_marks_edited(self):
+        transfer = await self.assigned_transfer()
+        result = await self.send(transfer, self.customer, message='Hi')
+        message_id = self.ok(result, 'sendMessage')['id']
+        message = await models.Message.objects.aget(pk=message_id)
+        self.assertFalse(message.is_edited)
+        data = {'id': message_id, 'message': 'Hello'}
+        result = await self.execute(UPDATE_MESSAGE, {'data': data}, self.customer)
+        self.assertEqual(
+            self.ok(result, 'updateMessage'),
+            {'id': message_id, 'message': 'Hello', 'isEdited': True}
+        )
 
 
 UPDATE_FCM_TOKEN = '''

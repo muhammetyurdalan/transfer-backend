@@ -147,6 +147,7 @@ class Mutation:
         assert elapsed <= window, dumps({'code': 'ERR020'})
         assert data.message, dumps({'code': 'ERR017'})
         message.message = data.message
+        message.is_edited = True
         await message.asave()
         receiver_ids = await get_message_receiver_ids(message)
         args = (user.id, enums.Action.UPDATE_MESSAGE, receiver_ids)

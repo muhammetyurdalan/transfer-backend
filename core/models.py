@@ -387,6 +387,7 @@ class Message(models.Model):
     message = models.TextField(blank=True)
     location = models.TextField(blank=True)
     file = models.FileField(upload_to=upload_to, blank=True)
+    is_edited = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     deleted_time = models.DateTimeField(blank=True, null=True)
     deleted_by = models.ForeignKey(
