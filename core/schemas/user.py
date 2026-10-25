@@ -131,7 +131,7 @@ class Mutation:
         user.role = data.role or enums.SignUpRole.CUSTOMER
         user.language = decoded_data['language']
         user.is_active = True
-        check_password(data.password, user)
+        # check_password(data.password, user)
         user.set_password(data.password)
         await user.asave()
         token = utils.create_token(user.email)
@@ -161,7 +161,7 @@ class Mutation:
         email = decoded_data['email']
         user = await manager.filter(email=email, is_active=True).afirst()
         assert user, dumps({'code': 'ERR010'})
-        check_password(data.password, user)
+        # check_password(data.password, user)
         user.set_password(data.password)
         await user.asave()
         return outputs.SuccessResponse(success=True)
