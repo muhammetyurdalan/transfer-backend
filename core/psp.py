@@ -69,7 +69,7 @@ async def get_payment_link(transfer):
     await expire_payment_link(transfer)
     transaction = get_transaction(transfer, Category.PAYMENT, transfer.price)
     data = {
-        'state': settings.PSP_STATE,
+        'state': transfer.state.code.lower(),
         'transfer': utils.get_dict(transfer),
         'customer': utils.get_dict(transfer.customer),
         'transaction': utils.get_dict(transaction),

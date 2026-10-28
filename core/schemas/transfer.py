@@ -284,7 +284,7 @@ class Mutation:
         successful payment (psp-return), then operators are notified.
         """
         user = info.context['user']
-        expand = ['customer']
+        expand = ['customer', 'state']
         transfer = await get_transfer(user, data.id, EDITABLE_STATUSES, expand)
         check_pickup_time(transfer.pickup_time)
         categories = models.VehicleCategory.objects.eligible_for(transfer)
