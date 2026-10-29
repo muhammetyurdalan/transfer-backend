@@ -6,7 +6,7 @@ from pathlib import Path
 # Path Settings
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-load_dotenv(BASE_DIR / '.env.dev')
+load_dotenv(BASE_DIR / '.env')
 
 
 def env(key, default=None):
