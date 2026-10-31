@@ -110,7 +110,7 @@ async def process_payment_return(data):
     now = timezone.now()
     pending = transfers.filter(status=Status.PENDING)
     # Conditional update: a repeated return is processed only once
-    updated = await pending.aupdate(status=Status.PAID, updated_at=now)
+    updated = await pending.aupdate(status=Status.ACCEPTED, updated_at=now)
     if not updated:
         logger.warning(
             'Payment return for transfer %s in status %s', transfer_id,
@@ -123,15 +123,14 @@ async def process_payment_return(data):
     await transaction.asave()
     args = (None, Action.PAYMENT_SUCCESS, customer_ids)
     await utils.broadcast(*args, **action_kwargs)
-    operator_ids = await utils.get_operator_ids()
     await utils.notify_users(
-        operator_ids,
+        [transfer.operator_id],
         gettext_noop('New Transfer'),
         gettext_noop('Transfer #%(id)s is paid and waiting for a driver'),
-        Action.TRANSFER_PAID,
+        Action.TRANSFER_ACCEPTED,
         transfer
     )
-    args = (None, Action.TRANSFER_PAID, operator_ids)
+    args = (None, Action.TRANSFER_ACCEPTED, [transfer.operator_id])
     await utils.broadcast(*args, **action_kwargs)
 
 

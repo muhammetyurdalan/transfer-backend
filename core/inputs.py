@@ -200,6 +200,12 @@ class CreateTransfer:
     legs: Optional[List[CreateLeg]] = optional()
 
 
+@sb.input   
+class CheckDistricts:
+    pickup_district_name: str = required('at least one must be found')
+    dropoff_district_name: str = required('at least one must be found')
+
+
 @sb.input
 class UpdateTransfer:
     id: sb.ID
@@ -246,7 +252,7 @@ class AssignDriver:
 @sb.input
 class UpdateTransferStatus:
     id: sb.ID
-    status: enums.TransferStatus = required('ASSIGNED -> STARTED -> COMPLETED')
+    status: enums.TransferStatus = required('ACCEPTED -> STARTED -> COMPLETED')
 
 
 @sb.input

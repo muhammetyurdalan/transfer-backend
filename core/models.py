@@ -24,6 +24,50 @@ def upload_to(instance, filename):
     return f'{folder}/{uuid4()}.{extension}'
 
 
+class State(models.Model):
+    name = models.CharField(max_length=50)
+    code = models.CharField(max_length=4, unique=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class City(models.Model):
+    state = models.ForeignKey(
+        State,
+        related_name='cities',
+        on_delete=models.CASCADE
+    )
+    name = models.CharField(max_length=50)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name_plural = 'cities'
+
+    def __str__(self):
+        return self.name
+
+
+class District(models.Model):
+    city = models.ForeignKey(
+        City,
+        related_name='districts',
+        on_delete=models.CASCADE
+    )
+    name = models.CharField(max_length=50)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['name']
+        indexes = [models.Index(fields=['name'])]
+
+    def __str__(self):
+        return self.name
+
+
 class User(AbstractBaseUser):
     role = models.CharField(
         max_length=10,
@@ -43,6 +87,7 @@ class User(AbstractBaseUser):
     psp_data = models.JSONField(default=dict)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    districts = models.ManyToManyField(District, related_name='users')
 
     objects = UserManager()
     USERNAME_FIELD = 'email'
@@ -89,50 +134,6 @@ class Notification(models.Model):
 
     def __str__(self):
         return f'user_id: {self.user_id}, title: {self.title}'
-
-
-class State(models.Model):
-    name = models.CharField(max_length=50)
-    code = models.CharField(max_length=4, unique=True)
-
-    class Meta:
-        ordering = ['name']
-
-    def __str__(self):
-        return self.name
-
-
-class City(models.Model):
-    state = models.ForeignKey(
-        State,
-        related_name='cities',
-        on_delete=models.CASCADE
-    )
-    name = models.CharField(max_length=50)
-
-    class Meta:
-        ordering = ['name']
-        verbose_name_plural = 'cities'
-
-    def __str__(self):
-        return self.name
-
-
-class District(models.Model):
-    city = models.ForeignKey(
-        City,
-        related_name='districts',
-        on_delete=models.CASCADE
-    )
-    name = models.CharField(max_length=50)
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        ordering = ['name']
-        indexes = [models.Index(fields=['name'])]
-
-    def __str__(self):
-        return self.name
 
 
 class VehicleCategory(models.Model):

@@ -143,8 +143,10 @@ def get_receiver_ids(sender_id, transfer):
 
 def get_transfers(user, expand=()):
     transfers = models.Transfer.objects.select_related(*expand).all()
-    if user.role in DISPATCH_ROLES:
+    if user.role in STAFF_ROLES:
         return transfers
+    if user.role == enums.Role.OPERATOR:
+        return transfers.filter(operator=user)
     if user.role == enums.Role.DRIVER:
         return transfers.filter(driver=user)
     return transfers.filter(customer=user)

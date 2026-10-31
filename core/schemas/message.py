@@ -15,7 +15,7 @@ from core.decorators import permission_required
 User = utils.User
 manager = models.Message.objects
 Status = enums.TransferStatus
-MESSAGING_STATUSES = [Status.ASSIGNED, Status.STARTED]
+MESSAGING_STATUSES = [Status.ACCEPTED, Status.STARTED]
 
 
 def get_visible_messages(user, transfer):

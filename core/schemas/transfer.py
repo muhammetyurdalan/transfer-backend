@@ -1,3 +1,5 @@
+from django.db.models import Q
+from django.db.models.aggregates import Count
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.translation import activate, gettext_noop
@@ -17,11 +19,11 @@ Role = enums.Role
 Action = enums.Action
 ZERO = models.ZERO
 EDITABLE_STATUSES = [Status.PENDING]
-ASSIGNABLE_STATUSES = [Status.PAID, Status.ASSIGNED]
-CANCELLABLE_STATUSES = [Status.PENDING, Status.PAID, Status.ASSIGNED]
+ASSIGNABLE_STATUSES = [Status.ACCEPTED]
+CANCELLABLE_STATUSES = [Status.PENDING, Status.ACCEPTED]
 TIPPABLE_STATUSES = [Status.COMPLETED]
 STATUS_TRANSITIONS = {
-    Status.ASSIGNED: Status.STARTED,
+    Status.ACCEPTED: Status.STARTED,
     Status.STARTED: Status.COMPLETED,
 }
 # Fields that change the vehicle options or the price
@@ -98,6 +100,16 @@ class Query:
         transfer = await get_transfer(user, transfer_id)
         activate(user.language)
         return await get_vehicle_options(transfer)
+    
+    @sbd.field(description='ALL')
+    @permission_required('ALL')
+    async def check_districts(
+        root, info: Info,
+        data: inputs.CheckDistricts
+    ) -> outputs.SuccessResponse:
+        pickup = await get_district(None, data, 'pickup')
+        dropoff = await get_district(None, data, 'dropoff')
+        return outputs.SuccessResponse(success=bool(pickup or dropoff))
 
     @sbd.field(description='OPERATOR, ADMIN, STAFF')
     @permission_required('OPERATOR', 'ADMIN', 'STAFF')
@@ -150,13 +162,19 @@ def check_transfer(transfer):
     transfer.distance = transfer.distance.quantize(ZERO)
 
 
-async def get_district(transfer, data, prefix):
+async def get_district(transfer, data, prefix, require_serviceable=True):
     """By name if given, otherwise the transfer's current district."""
     districts = models.District.objects.values('id', 'city__state_id')
-    name = getattr(data, f'{prefix}_district_name')
-    if name:
-        filters = {'name__iexact': name.strip(), 'is_active': True}
-        return await districts.filter(**filters).afirst()
+    district_name = getattr(data, f'{prefix}_district_name')
+    if district_name:
+        filters = {'name__iexact': district_name.strip()}
+        if require_serviceable:
+            filters.update({
+                'is_active': True, 
+                'users__role': 'OPERATOR', 
+                'users__is_active': True
+            })
+        return await districts.filter(**filters).distinct().afirst()
     district_id = getattr(transfer, f'{prefix}_district_id')
     if district_id:
         return await districts.filter(pk=district_id).afirst()
@@ -174,6 +192,29 @@ async def set_districts(transfer, data):
     transfer.pickup_district_id = pickup['id'] if pickup else None
     transfer.dropoff_district_id = dropoff['id'] if dropoff else None
     transfer.state_id = (pickup or dropoff)['city__state_id']
+    await set_operator(transfer)
+
+
+async def set_operator(transfer):
+    """Sets the operator to the first active operator of the transfer's state."""
+    assert transfer.state_id, dumps({'code': 'ERR035'})
+    district_ids = [transfer.pickup_district_id, transfer.dropoff_district_id]
+    operators = User.objects.filter(
+        role=Role.OPERATOR,
+        is_active=True,
+        districts__id__in=district_ids
+    ).annotate(
+        pickup_district=Count('districts', 
+            filter=Q(districts__id=transfer.pickup_district_id), distinct=True
+        ),
+        transfer_count=Count('operator_transfers', 
+            filter=Q(operator_transfers__status='ACCEPTED'), distinct=True
+        )
+    )
+    operators = operators.order_by('-pickup_district', 'transfer_count')
+    operator = await operators.afirst()
+    assert operator, dumps({'code': 'ERR035'})
+    transfer.operator = operator
 
 
 def check_legs(legs):
@@ -280,7 +321,7 @@ class Mutation:
     ) -> outputs.PaymentResponse:
         """
         Sets the chosen vehicle category and its price, then returns a payment
-        link. The transfer becomes PAID when the payment service reports a
+        link. The transfer becomes ACCEPTED when the payment service reports a
         successful payment (psp-return), then operators are notified.
         """
         user = info.context['user']
@@ -307,7 +348,7 @@ class Mutation:
         root, info: Info,
         data: inputs.AssignDriver
     ) -> outputs.Transfer:
-        """PAID or ASSIGNED (reassignment) transfer, driver must be available."""
+        """ACCEPTED (reassignment) transfer, driver must be available."""
         user = info.context['user']
         transfer = await get_transfer(user, data.id, ASSIGNABLE_STATUSES)
         drivers = User.objects.available_drivers(transfer)
@@ -322,7 +363,6 @@ class Mutation:
         previous_driver_id = transfer.driver_id
         transfer.driver_id = vehicle.driver_id
         transfer.vehicle = vehicle
-        transfer.status = Status.ASSIGNED
         if user.role == Role.OPERATOR:
             transfer.operator = user
         await transfer.asave()
@@ -346,14 +386,14 @@ class Mutation:
             transfer,
             sender_id=user.id
         )
-        await utils.notify_users(
-            [customer_id],
-            gettext_noop('Driver Assigned'),
-            gettext_noop('A driver was assigned to transfer #%(id)s'),
-            Action.TRANSFER_ASSIGNED,
-            transfer,
-            sender_id=user.id
-        )
+        # await utils.notify_users(
+        #     [customer_id],
+        #     gettext_noop('Driver Assigned'),
+        #     gettext_noop('A driver was assigned to transfer #%(id)s'),
+        #     Action.TRANSFER_ASSIGNED,
+        #     transfer,
+        #     sender_id=user.id
+        # )
         args = (user.id, Action.TRANSFER_ASSIGNED, [driver_id, customer_id])
         await utils.broadcast(*args, transfer_id=str(transfer.id))
         return transfer
@@ -364,7 +404,7 @@ class Mutation:
         root, info: Info,
         data: inputs.UpdateTransferStatus
     ) -> outputs.Transfer:
-        """ASSIGNED -> STARTED -> COMPLETED, drivers only their transfers."""
+        """ACCEPTED -> STARTED -> COMPLETED, drivers only their transfers."""
         user = info.context['user']
         statuses = list(STATUS_TRANSITIONS)
         transfer = await get_transfer(user, data.id, statuses)

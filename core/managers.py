@@ -6,7 +6,7 @@ from django.db.models import Exists, OuterRef, QuerySet
 
 
 # Transfers in these statuses keep their driver busy
-BUSY_STATUSES = ['ASSIGNED', 'STARTED']
+BUSY_STATUSES = ['ACCEPTED', 'STARTED']
 
 
 def get_model(name):

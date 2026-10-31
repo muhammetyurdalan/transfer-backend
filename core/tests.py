@@ -548,14 +548,14 @@ class TransferTests(GraphQLTestCase):
 
     async def test_payment_return_marks_paid_and_notifies_operators(self):
         transfer = await self.paid_transfer()
-        self.assertEqual(transfer.status, 'PAID')
+        self.assertEqual(transfer.status, 'ACCEPTED')
         self.assertEqual(transfer.vehicle_category_id, self.sedan.id)
         payments = models.Transaction.objects.filter(transfer=transfer)
         payment = await payments.aget()
         self.assertEqual(payment.category, 'PAYMENT')
         self.assertEqual(payment.order_amount, Decimal('605.00'))
         self.assertEqual(payment.order_id, 'order_1')
-        notifications = models.Notification.objects.filter(action='TRANSFER_PAID')
+        notifications = models.Notification.objects.filter(action='TRANSFER_ACCEPTED')
         user_ids = {n.user_id async for n in notifications}
         self.assertEqual(user_ids, {self.operator.id, self.other_operator.id})
         # A repeated return is processed once
@@ -622,7 +622,7 @@ class AvailableDriverTests(GraphQLTestCase):
 
     async def busy_transfer(self, driver, pickup_time, duration=60):
         return await models.Transfer.objects.acreate(
-            customer=self.other_customer, driver=driver, status='ASSIGNED',
+            customer=self.other_customer, driver=driver, status='ACCEPTED',
             vehicle_category=self.sedan, pickup_time=pickup_time,
             duration=duration, distance='10', passenger_name='X',
             pickup_address='A', pickup_latitude=0, pickup_longitude=0,
@@ -690,7 +690,6 @@ class AssignmentTests(GraphQLTestCase):
         self.assertEqual(self.error_code(result), 'ERR001')
         result = await self.execute(ASSIGN_DRIVER, {'data': data}, self.operator)
         assigned = self.ok(result, 'assignDriver')
-        self.assertEqual(assigned['status'], 'ASSIGNED')
         self.assertEqual(assigned['driverId'], str(self.driver.id))
         self.assertEqual(assigned['vehicleId'], str(self.driver_vehicle.id))
         self.assertEqual(assigned['operatorId'], str(self.operator.id))
@@ -936,7 +935,7 @@ class PushTests(GraphQLTestCase):
             await self.paid_transfer()
         message = send_message.call_args_list[0].args[0]
         self.assertEqual(message.notification.title, 'New Transfer')
-        self.assertEqual(message.data['action'], 'TRANSFER_PAID')
+        self.assertEqual(message.data['action'], 'TRANSFER_ACCEPTED')
         self.assertEqual(message.data['model'], 'Transfer')
 
 
@@ -959,5 +958,5 @@ class SubscriptionTests(GraphQLTestCase):
         finally:
             await communicator.disconnect()
         actions = [event['action'] for event in events]
-        self.assertEqual(actions, ['NOTIFICATION', 'TRANSFER_PAID'])
+        self.assertEqual(actions, ['NOTIFICATION', 'TRANSFER_ACCEPTED'])
         self.assertEqual(events[1]['transferId'], str(transfer.id))
