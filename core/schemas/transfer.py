@@ -440,23 +440,26 @@ class Mutation:
         now = timezone.now()
         if transfer.status == Status.PENDING:
             await psp.expire_payment_link(transfer)
+            transfer.status = Status.WITHDRAWN
+            action = Action.TRANSFER_WITHDRAWN
         else:
             penalty_rate = ZERO
             if user.role == Role.CUSTOMER:
                 penalty_rate = psp.get_penalty_rate(transfer, now)
             await psp.refund_cancelled_transfer(transfer, penalty_rate)
-        transfer.status = Status.CANCELLED
+            transfer.status = Status.CANCELLED
+            action = Action.TRANSFER_CANCELLED
         await transfer.asave()
         receiver_ids = utils.get_receiver_ids(user.id, transfer)
         await utils.notify_users(
             receiver_ids,
             gettext_noop('Transfer Cancelled'),
             gettext_noop('Transfer #%(id)s was cancelled'),
-            Action.TRANSFER_CANCELLED,
+            action,
             transfer,
             sender_id=user.id
         )
-        args = (user.id, Action.TRANSFER_CANCELLED, receiver_ids)
+        args = (user.id, action, receiver_ids)
         await utils.broadcast(*args, transfer_id=str(transfer.id))
         return transfer
 
