@@ -83,11 +83,18 @@ async def get_payment_link(transfer):
     transfer.psp_data['order_amount'] = str(transfer.price)
 
 
-async def expire_payment_link(transfer):
-    if not transfer.psp_data.get('payment_link'):
+async def expire_payment_link(transfer, link_type='payment'):
+    if not transfer.psp_data.get(f'{link_type}_link'):
         return
-    data = {'psp': transfer.psp_data.get('psp'), 'psp_data': transfer.psp_data}
-    await async_post('/expirePaymentLink', data)
+    data = {
+        'psp': transfer.psp_data.get('psp'), 
+        'psp_data': transfer.psp_data,
+        'link_type': link_type
+    }
+    response = await async_post('/expirePaymentLink', data)
+    if not response.get('success'):
+        logger.warning('PSP expirePaymentLink failed: %s', response.get('error'))
+        return
     for key in PAYMENT_KEYS:
         transfer.psp_data.pop(key, None)
 
@@ -100,16 +107,16 @@ async def process_payment_return(data):
     transfer = await transfers.afirst()
     if not transfer:
         return
+    if transfer.status != Status.PENDING:
+        return
     action_kwargs = {'transfer_id': transfer_id}
     customer_ids = [transfer.customer_id]
     if not data.get('success'):
-        if transfer.status == Status.PENDING:
-            args = (None, Action.PAYMENT_FAILED, customer_ids)
-            await utils.broadcast(*args, **action_kwargs)
+        args = (None, Action.PAYMENT_FAILED, customer_ids)
+        await utils.broadcast(*args, **action_kwargs)
         return
     now = timezone.now()
     pending = transfers.filter(status=Status.PENDING)
-    # Conditional update: a repeated return is processed only once
     updated = await pending.aupdate(status=Status.ACCEPTED, updated_at=now)
     if not updated:
         logger.warning(
@@ -138,6 +145,7 @@ async def process_payment_return(data):
 
 async def get_tip_link(transfer, amount):
     driver = transfer.driver
+    await expire_payment_link(transfer, 'tip')
     transaction = get_transaction(transfer, Category.TIP, amount)
     data = {
         'state': settings.PSP_STATE,
