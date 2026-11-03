@@ -257,9 +257,12 @@ class TransferFilter:
     passenger_name: Optional[sbd.StrFilterLookup] = sb.UNSET
     flight_number: Optional[sbd.StrFilterLookup] = sb.UNSET
     created_at: Optional[sbd.DatetimeFilterLookup] = sb.UNSET
+    AND: Optional[List['TransferFilter']]
+    OR: Optional[List['TransferFilter']]
+    NOT: Optional[List['TransferFilter']]
     
-    @sbd.filter_field()
-    async def has_driver(self, info: Info, value: bool, prefix: str) -> Q:
+    @sbd.filter_field
+    def has_driver(self, value: bool, prefix: str) -> Q:
         if value:
             return Q(driver_id__isnull=False)
         return Q(driver_id__isnull=True)
