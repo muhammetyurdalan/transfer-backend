@@ -41,16 +41,6 @@ CORS_ALLOWED_ORIGINS = env_list('CORS_ALLOWED_ORIGINS')
 CSRF_TRUSTED_ORIGINS = env_list('CSRF_TRUSTED_ORIGINS')
 
 
-# Transfer Rules
-
-# A driver is busy from (pickup_time - buffer) to (end_time + buffer)
-DRIVER_BUFFER_MINUTES = 30
-# Customer cancellation: [{hours, rate}] sorted by hours. The first rule whose
-# hours is greater than the remaining time to pickup sets the share kept.
-# [] means always full refund.
-CANCEL_PENALTY_RULES = []
-
-
 # Application Definition
 
 AUTH_USER_MODEL = 'core.User'
@@ -134,8 +124,6 @@ CHANNEL_LAYERS = {
 
 PSP_MS_URL = env('PSP_MS_URL', '')
 MS_ACCESS_TOKEN = env('MS_ACCESS_TOKEN', '')
-# Country code the microservice selects the PSP with
-PSP_STATE = env('PSP_STATE', 'TR')
 
 
 # Celery

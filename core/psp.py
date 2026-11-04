@@ -69,7 +69,7 @@ async def get_payment_link(transfer):
     await expire_payment_link(transfer)
     transaction = get_transaction(transfer, Category.PAYMENT, transfer.price)
     data = {
-        'state': transfer.state.code.lower(),
+        'psp': transfer.state.psp.lower(),
         'transfer': utils.get_dict(transfer),
         'customer': utils.get_dict(transfer.customer),
         'transaction': utils.get_dict(transaction),
@@ -148,7 +148,7 @@ async def get_tip_link(transfer, amount):
     await expire_payment_link(transfer, 'tip')
     transaction = get_transaction(transfer, Category.TIP, amount)
     data = {
-        'state': transfer.state.code.lower(),
+        'psp': transfer.state.psp.lower(),
         'transfer': utils.get_dict(transfer),
         'customer': utils.get_dict(transfer.customer),
         'provider': driver.psp_data,
@@ -270,20 +270,29 @@ async def refund_transaction(transaction, amount=None, note=''):
     return refund
 
 
-def get_penalty_rate(transfer, cancel_time):
-    remaining = transfer.pickup_time - cancel_time
-    for rule in settings.CANCEL_PENALTY_RULES:
-        if remaining < timedelta(hours=rule['hours']):
-            return Decimal(rule['rate'])
-    return ZERO
+def get_penalty_rate(transfer, cancel_time, waive_penalty=False):
+    if waive_penalty:
+        return ZERO
+    state = transfer.state
+    iterator = (
+        Decimal(rate)
+        for hour, rate in zip(
+            state.customer_imposed_hours,
+            state.customer_imposed_rates,
+        )
+        if transfer.start_time - cancel_time < timedelta(hours=hour)
+    )
+    penalty_rate = next(iterator, ZERO)
+    return penalty_rate
 
 
-async def refund_cancelled_transfer(transfer, penalty_rate=ZERO):
+async def refund_cancelled_transfer(transfer, cancel_time):
     """Refunds the transfer payment except the penalty share, if paid."""
     payments = transfer.transactions.select_related('transfer')
     payment = await payments.filter(category=Category.PAYMENT).afirst()
     if not payment:
         return None
+    penalty_rate = get_penalty_rate(transfer, cancel_time)
     kept = (payment.order_amount * penalty_rate).quantize(ZERO)
     amount = await get_refundable_amount(payment) - kept
     if amount <= ZERO:

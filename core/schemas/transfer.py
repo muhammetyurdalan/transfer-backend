@@ -125,7 +125,9 @@ class Query:
         no other assigned/started transfer at that time.
         """
         user = info.context['user']
-        transfer = await get_transfer(user, transfer_id, ASSIGNABLE_STATUSES)
+        expand = ['state']
+        args = (user, transfer_id, ASSIGNABLE_STATUSES, expand)
+        transfer = await get_transfer(*args)
         drivers = User.objects.available_drivers(transfer)
         if filters:
             drivers = sbd.filters.apply(filters, drivers, info)
@@ -145,7 +147,9 @@ class Query:
     ) -> List[outputs.Vehicle]:
         """Suitable vehicles of the available drivers, with their driver."""
         user = info.context['user']
-        transfer = await get_transfer(user, transfer_id, ASSIGNABLE_STATUSES)
+        expand = ['state']
+        args = (user, transfer_id, ASSIGNABLE_STATUSES, expand)
+        transfer = await get_transfer(*args)
         activate(user.language)
         return models.Vehicle.objects.available_for(transfer)
 
@@ -350,7 +354,9 @@ class Mutation:
     ) -> outputs.Transfer:
         """ACCEPTED (reassignment) transfer, driver must be available."""
         user = info.context['user']
-        transfer = await get_transfer(user, data.id, ASSIGNABLE_STATUSES)
+        expand = ['state']
+        args = (user, data.id, ASSIGNABLE_STATUSES, expand)
+        transfer = await get_transfer(*args)
         drivers = User.objects.available_drivers(transfer)
         drivers = drivers.filter(pk=data.driver_id)
         assert await drivers.aexists(), dumps({'code': 'ERR015'})
@@ -436,17 +442,15 @@ class Mutation:
         a customer's cancellation keeps the CANCEL_PENALTY_RULES share.
         """
         user = info.context['user']
-        transfer = await get_transfer(user, id, CANCELLABLE_STATUSES)
-        now = timezone.now()
+        expand = ['state']
+        transfer = await get_transfer(user, id, CANCELLABLE_STATUSES, expand)
+        cancel_time = timezone.now()
         if transfer.status == Status.PENDING:
             await psp.expire_payment_link(transfer)
             transfer.status = Status.WITHDRAWN
             action = Action.TRANSFER_WITHDRAWN
         else:
-            penalty_rate = ZERO
-            if user.role == Role.CUSTOMER:
-                penalty_rate = psp.get_penalty_rate(transfer, now)
-            await psp.refund_cancelled_transfer(transfer, penalty_rate)
+            await psp.refund_cancelled_transfer(transfer, cancel_time)
             transfer.status = Status.CANCELLED
             action = Action.TRANSFER_CANCELLED
         await transfer.asave()

@@ -39,4 +39,3 @@ STORAGES['default'] = {
     'BACKEND': 'django.core.files.storage.FileSystemStorage',
 }
 FCM_ENABLED = False
-CANCEL_PENALTY_RULES = []

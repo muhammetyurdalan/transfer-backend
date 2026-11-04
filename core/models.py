@@ -27,6 +27,13 @@ def upload_to(instance, filename):
 class State(models.Model):
     name = models.CharField(max_length=50)
     code = models.CharField(max_length=4, unique=True)
+    psp = models.CharField(max_length=20)
+    customer_imposed_hours = models.JSONField(default=list)
+    customer_imposed_rates = models.JSONField(
+        default=list,
+        encoder=DjangoJSONEncoder
+    )
+    driver_buffer_minutes = models.PositiveSmallIntegerField(default=30)
 
     class Meta:
         ordering = ['name']

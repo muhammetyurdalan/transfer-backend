@@ -1,6 +1,5 @@
 from datetime import timedelta
 from django.apps import apps
-from django.conf import settings
 from django.contrib.auth.base_user import BaseUserManager
 from django.db.models import Exists, OuterRef, QuerySet
 
@@ -81,7 +80,9 @@ class TransferQuerySet(QuerySet):
         Busy transfers (other than this one) whose time window, extended by
         DRIVER_BUFFER_MINUTES on both sides, intersects this transfer's.
         """
-        buffer = timedelta(minutes=settings.DRIVER_BUFFER_MINUTES)
+        state = transfer.state
+        driver_buffer_minutes = state.driver_buffer_minutes
+        buffer = timedelta(minutes=driver_buffer_minutes)
         return self.filter(
             status__in=BUSY_STATUSES,
             pickup_time__lt=transfer.end_time + buffer,
