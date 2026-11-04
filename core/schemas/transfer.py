@@ -474,7 +474,7 @@ class Mutation:
         the driver is notified when the payment service reports success.
         """
         user = info.context['user']
-        expand = ['customer', 'driver']
+        expand = ['customer', 'driver', 'state']
         transfer = await get_transfer(user, data.id, TIPPABLE_STATUSES, expand)
         amount = data.amount.quantize(ZERO)
         valid = amount > ZERO and transfer.driver_id and transfer.currency

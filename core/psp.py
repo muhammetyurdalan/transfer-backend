@@ -148,7 +148,7 @@ async def get_tip_link(transfer, amount):
     await expire_payment_link(transfer, 'tip')
     transaction = get_transaction(transfer, Category.TIP, amount)
     data = {
-        'state': settings.PSP_STATE,
+        'state': transfer.state.code.lower(),
         'transfer': utils.get_dict(transfer),
         'customer': utils.get_dict(transfer.customer),
         'provider': driver.psp_data,
