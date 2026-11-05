@@ -183,9 +183,30 @@ class VehicleCategoriesPaginated:
 
 # Location
 
+@sbd.filter_type(models.State)
+class StateFilter:
+    id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
+    name: Optional[sbd.StrFilterLookup] = sb.UNSET
+    code: Optional[sbd.StrFilterLookup] = sb.UNSET
+    psp: Optional[sbd.StrFilterLookup] = sb.UNSET
+
+
+@sbd.order_type(models.State)
+class StateOrder:
+    id: sb.auto
+    name: sb.auto
+    code: sb.auto
+
+
 @sbd.type(models.State, exclude=['cities', 'transfers'])
 class State:
     pass
+
+
+@sb.type
+class StatesPaginated:
+    states: Optional[List[State]]
+    count: Optional[int]
 
 
 @sbd.type(models.City, exclude=['districts'])

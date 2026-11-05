@@ -118,6 +118,24 @@ mutation($data: UpdateMessage!) {
 '''
 
 
+STATE_FIELDS = '''
+id name code psp customerImposedHours customerImposedRates
+driverBufferMinutes
+'''
+STATES = '''
+query { states(ordering: [{name: ASC}]) { count states { name code } } }
+'''
+CREATE_STATE = f'''
+mutation($data: CreateState!) {{ createState(data: $data) {{ {STATE_FIELDS} }} }}
+'''
+UPDATE_STATE = f'''
+mutation($data: UpdateState!) {{ updateState(data: $data) {{ {STATE_FIELDS} }} }}
+'''
+DELETE_STATE = '''
+mutation($id: ID!) { deleteState(id: $id) { success } }
+'''
+
+
 def psp_response(path, data):
     if path in ('/createPaymentLink', '/createTipLink'):
         return {
@@ -321,6 +339,69 @@ class VehicleCategoryTests(GraphQLTestCase):
             CREATE_VEHICLE_CATEGORY, {'data': data}, self.staff
         )
         self.assertEqual(self.error_code(result), 'ERR030')
+
+
+class StateTests(GraphQLTestCase):
+    async def test_states_query_permissions(self):
+        result = await self.execute(STATES, user=self.customer)
+        self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.execute(STATES, user=self.operator)
+        data = self.ok(result, 'states')
+        self.assertEqual(data['count'], 2)
+        self.assertEqual(
+            [state['code'] for state in data['states']], ['GR', 'TR']
+        )
+
+    async def test_create_update_state(self):
+        data = {'name': 'Cyprus', 'code': 'CY', 'psp': 'iyzico',
+                'customerImposedHours': [2, 24],
+                'customerImposedRates': ['1', '0.5']}
+        result = await self.execute(CREATE_STATE, {'data': data}, self.operator)
+        self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.execute(CREATE_STATE, {'data': data}, self.staff)
+        created = self.ok(result, 'createState')
+        self.assertEqual(created['customerImposedRates'], ['1', '0.5'])
+        self.assertEqual(created['driverBufferMinutes'], 30)
+        result = await self.execute(CREATE_STATE, {'data': data}, self.staff)
+        self.assertEqual(self.error_code(result), 'ERR038')
+        # Hours not ascending, rate out of range, length mismatch
+        for hours, rates in (([24, 2], ['1', '0.5']), ([2], ['1.5']),
+                             ([2, 24], ['1'])):
+            update = {'id': created['id'], 'customerImposedHours': hours,
+                      'customerImposedRates': rates}
+            result = await self.execute(
+                UPDATE_STATE, {'data': update}, self.admin
+            )
+            self.assertEqual(self.error_code(result), 'ERR030')
+        update = {'id': created['id'], 'driverBufferMinutes': 45}
+        result = await self.execute(UPDATE_STATE, {'data': update}, self.admin)
+        updated = self.ok(result, 'updateState')
+        self.assertEqual(updated['driverBufferMinutes'], 45)
+        self.assertEqual(updated['customerImposedHours'], [2, 24])
+        update = {'id': '0', 'name': 'X'}
+        result = await self.execute(UPDATE_STATE, {'data': update}, self.admin)
+        self.assertEqual(self.error_code(result), 'ERR036')
+
+    async def test_delete_state(self):
+        await models.Transfer.objects.acreate(
+            customer=self.customer, state=self.turkey,
+            vehicle_category=self.sedan,
+            pickup_time=timezone.now() + timedelta(days=1),
+            duration=30, distance='10', passenger_name='X',
+            pickup_address='A', pickup_latitude=0, pickup_longitude=0,
+            dropoff_address='B', dropoff_latitude=0, dropoff_longitude=0
+        )
+        result = await self.execute(
+            DELETE_STATE, {'id': self.turkey.id}, self.admin
+        )
+        self.assertEqual(self.error_code(result), 'ERR037')
+        result = await self.execute(
+            DELETE_STATE, {'id': self.greece.id}, self.admin
+        )
+        self.assertTrue(self.ok(result, 'deleteState')['success'])
+        self.assertFalse(
+            await models.District.objects.filter(name='Glyfada').aexists()
+        )
 
 
 class VehicleTests(GraphQLTestCase):

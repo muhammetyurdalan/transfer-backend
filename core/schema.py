@@ -13,6 +13,8 @@ from core.schemas.message import Query as message_query
 from core.schemas.message import Mutation as message_mutation
 from core.schemas.notification import Query as notification_query
 from core.schemas.notification import Mutation as notification_mutation
+from core.schemas.state import Query as state_query
+from core.schemas.state import Mutation as state_mutation
 from core.schemas.transaction import Query as transaction_query
 from core.schemas.transaction import Mutation as transaction_mutation
 from core.schemas.transfer import Query as transfer_query
@@ -31,6 +33,7 @@ from core.schemas.vehicle_category import (
 queries = (
     message_query,
     notification_query,
+    state_query,
     transaction_query,
     transfer_query,
     user_query,
@@ -41,6 +44,7 @@ queries = (
 mutations = (
     message_mutation,
     notification_mutation,
+    state_mutation,
     transaction_mutation,
     transfer_mutation,
     user_mutation,

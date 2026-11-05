@@ -57,7 +57,8 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 - `state_id` = pickup district'in state'i, o yoksa dropoff'unki.
 - `updateTransfer` bu isimlerden birini alırsa yeniden hesaplanır, verilmeyen taraf mevcut district'ini korur.
 - Aynı isimde birden fazla district varsa (ör. "Merkez") ilk eşleşen (alfabetik) alınır. Şehir adı alınmadığı için ayırt edilemez.
-- Veriler admin panelinden girilir, GraphQL'de State/City/District sorgusu yok.
+- City/District verileri admin panelinden girilir, GraphQL'de sorgusu yok.
+- **State** (`schemas/state.py`): `state`/`states` (ADMIN, STAFF, OPERATOR), `createState`/`updateState`/`deleteState` (ADMIN, STAFF). `code` büyük/küçük harf duyarsız benzersiz (`ERR038`). `customerImposedHours` artan pozitif saatler, `customerImposedRates` aynı uzunlukta 0–1 arası oranlar (`ERR030`), oranlar string olarak saklanır. Silme şehir ve district'leri de siler, transfer bağlıysa `ERR037`.
 
 ### 4.0.1 Ara duraklar (`Leg`)
 - `createTransfer` opsiyonel `legs` listesi alır (`CreateLeg`: başlangıç/bitiş konum, adres ve zaman, `order`, `route`). Gelirse transferle birlikte kaydedilir, `Transfer.legs` olarak `order` sırasıyla döner.
@@ -108,7 +109,7 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR036**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR039**.
 
 | Aralık | Alan |
 |---|---|
@@ -118,6 +119,7 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 | ERR025–ERR029 | Araç kategorisi, araç |
 | ERR030 | Geçersiz parametre |
 | ERR031–ERR034 | Ödeme |
+| ERR036–ERR038 | State |
 
 ## 6. Proje kararları (§15)
 

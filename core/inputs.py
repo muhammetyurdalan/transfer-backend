@@ -88,6 +88,37 @@ class SendNotification:
     data: Optional[JSON] = optional()
 
 
+# State
+
+@sb.input
+class CreateState:
+    name: str = required('50 chars max')
+    code: str = required('4 chars max, unique')
+    psp: str = required('20 chars max, payment provider of the state')
+    customer_imposed_hours: Optional[List[int]] = optional(
+        'cancel penalty thresholds in hours before start, ascending'
+    )
+    customer_imposed_rates: Optional[List[Decimal]] = optional(
+        'penalty rate (0-1) per hour threshold, same length as hours'
+    )
+    driver_buffer_minutes: Optional[int] = optional('default 30')
+
+
+@sb.input
+class UpdateState:
+    id: sb.ID
+    name: Optional[str] = optional('50 chars max')
+    code: Optional[str] = optional('4 chars max, unique')
+    psp: Optional[str] = optional('20 chars max')
+    customer_imposed_hours: Optional[List[int]] = optional(
+        'replaces the list, send with customerImposedRates'
+    )
+    customer_imposed_rates: Optional[List[Decimal]] = optional(
+        'replaces the list, send with customerImposedHours'
+    )
+    driver_buffer_minutes: Optional[int] = optional()
+
+
 # Vehicle category
 
 @sb.input
