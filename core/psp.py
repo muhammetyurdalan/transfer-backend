@@ -280,7 +280,7 @@ def get_penalty_rate(transfer, cancel_time, waive_penalty=False):
             state.customer_imposed_hours,
             state.customer_imposed_rates,
         )
-        if transfer.start_time - cancel_time < timedelta(hours=hour)
+        if transfer.pickup_time - cancel_time < timedelta(hours=hour)
     )
     penalty_rate = next(iterator, ZERO)
     return penalty_rate

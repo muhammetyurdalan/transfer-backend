@@ -22,7 +22,7 @@ def get_visible_messages(user, transfer):
     messages = transfer.messages.all()
     if user.role in utils.STAFF_ROLES:
         return messages
-    utils.check_participant(user, transfer)
+    utils.check_messaging_access(user, transfer)
     filters = Q(sender=user) | Q(receivers=user)
     return messages.filter(filters).distinct()
 
@@ -99,8 +99,8 @@ def get_message_payload(message):
 
 @sb.type
 class Mutation:
-    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR')
-    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR')
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
     async def send_message(
         root, info: Info,
         data: inputs.SendMessage
@@ -112,13 +112,14 @@ class Mutation:
         transfers = models.Transfer.objects.filter(pk=data.transfer_id)
         transfer = await transfers.afirst()
         assert transfer, dumps({'code': 'ERR013'})
-        utils.check_participant(sender, transfer)
+        utils.check_messaging_access(sender, transfer)
         check_messaging_available(transfer)
         if parent_id := data.parent_id:
             parents = get_visible_messages(sender, transfer)
             parents = parents.filter(pk=parent_id, is_deleted=False)
             assert await parents.aexists(), dumps({'code': 'ERR023'})
-        receiver_ids = utils.get_receiver_ids(sender.id, transfer)
+        args = (sender.id, transfer)
+        receiver_ids = await utils.get_messaging_receiver_ids(*args)
         assert receiver_ids, dumps({'code': 'ERR018'})
         message = models.Message(transfer=transfer, sender=sender)
         utils.set_attributes(message, data, ignored=['transfer_id'])
@@ -130,8 +131,8 @@ class Mutation:
         await utils.broadcast(*args, **get_message_payload(message))
         return message
 
-    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR')
-    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR')
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
     async def update_message(
         root, info: Info,
         data: inputs.UpdateMessage
@@ -154,8 +155,8 @@ class Mutation:
         await utils.broadcast(*args, **get_message_payload(message))
         return message
 
-    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR')
-    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR')
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
     async def delete_message(root, info: Info, id: sb.ID) -> outputs.Message:
         user = info.context['user']
         messages = manager.filter(pk=id, sender=user, is_deleted=False)
@@ -175,8 +176,8 @@ class Mutation:
         await utils.broadcast(*args, **kwargs)
         return message
 
-    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR')
-    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR')
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
     async def see_messages(
         root, info: Info,
         transfer_id: sb.ID
@@ -184,7 +185,7 @@ class Mutation:
         user = info.context['user']
         transfer = await models.Transfer.objects.filter(pk=transfer_id).afirst()
         assert transfer, dumps({'code': 'ERR013'})
-        utils.check_participant(user, transfer)
+        utils.check_messaging_access(user, transfer)
         through_messages = user.through_messages.filter(transfer=transfer)
         await through_messages.aupdate(is_seen=True)
         await see_message_notifications(user.id, transfer)

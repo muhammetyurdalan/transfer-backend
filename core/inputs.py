@@ -229,6 +229,7 @@ class CreateTransfer:
     flight_number: Optional[str] = optional('10 chars max')
     note: Optional[str] = optional()
     legs: Optional[List[CreateLeg]] = optional()
+    customer_id: Optional[sb.ID] = optional('for operators')
 
 
 @sb.input   

@@ -29,13 +29,13 @@ class Query:
     async def user(root, info: Info) -> outputs.User:
         return info.context['user']
 
-    @sbd.field(description='ADMIN, STAFF')
-    @permission_required('ADMIN', 'STAFF')
+    @sbd.field(description='OPERATOR, ADMIN, STAFF')
+    @permission_required('OPERATOR', 'ADMIN', 'STAFF')
     async def admin_user(root, info: Info, id: sb.ID) -> Optional[outputs.User]:
         return await manager.filter(pk=id).afirst()
 
-    @sbd.field(description='ADMIN, STAFF')
-    @permission_required('ADMIN', 'STAFF')
+    @sbd.field(description='OPERATOR, ADMIN, STAFF')
+    @permission_required('OPERATOR', 'ADMIN', 'STAFF')
     async def users(
         root, info: Info,
         filters: Optional[outputs.UserFilter] = sb.UNSET,

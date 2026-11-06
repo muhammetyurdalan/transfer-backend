@@ -262,15 +262,20 @@ def get_payment_response(link, expire_time):
 
 @sb.type
 class Mutation:
-    @sb.mutation(description='CUSTOMER')
-    @permission_required('CUSTOMER')
+    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
     async def create_transfer(
         root, info: Info,
         data: inputs.CreateTransfer
     ) -> outputs.TransferResponse:
         """Creates a PENDING transfer and returns its vehicle options."""
         user = info.context['user']
-        transfer = models.Transfer(customer=user)
+        customer_id = user.id
+        if user.role != Role.CUSTOMER and data.customer_id:
+            user = await User.objects.filter(pk=data.customer_id).afirst()
+            assert user and user.is_active, dumps({'code': 'ERR010'})
+            customer_id = data.customer_id
+        transfer = models.Transfer(customer_id=customer_id)
         ignored = IGNORED_CREATE_FIELDS
         utils.set_attributes(transfer, data, ignored=ignored, set_nulls=False)
         check_transfer(transfer)
@@ -286,8 +291,8 @@ class Mutation:
             vehicle_options=vehicle_options
         )
 
-    @sb.mutation(description='CUSTOMER')
-    @permission_required('CUSTOMER')
+    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
     async def update_transfer(
         root, info: Info,
         data: inputs.UpdateTransfer
@@ -317,8 +322,8 @@ class Mutation:
             vehicle_options=vehicle_options
         )
 
-    @sb.mutation(description='CUSTOMER')
-    @permission_required('CUSTOMER')
+    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
     async def pay_transfer(
         root, info: Info,
         data: inputs.PayTransfer

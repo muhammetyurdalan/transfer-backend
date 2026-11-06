@@ -111,6 +111,9 @@ mutation($data: SendMessage!) {
 MESSAGES = '''
 query($transferId: ID!) { messages(transferId: $transferId) { id message } }
 '''
+SEE_MESSAGES = '''
+mutation($transferId: ID!) { seeMessages(transferId: $transferId) { success } }
+'''
 UPDATE_MESSAGE = '''
 mutation($data: UpdateMessage!) {
   updateMessage(data: $data) { id message isEdited }
@@ -845,7 +848,7 @@ class PaymentTests(GraphQLTestCase):
             action='TRANSFER_CANCELLED'
         )
         user_ids = {n.user_id async for n in notifications}
-        self.assertEqual(user_ids, {self.driver.id, self.operator.id})
+        self.assertEqual(user_ids, expected)
 
     @override_settings(CANCEL_PENALTY_RULES=[{'hours': 72, 'rate': '0.20'}])
     async def test_customer_cancel_penalty(self):
@@ -967,7 +970,9 @@ class MessageTests(GraphQLTestCase):
         result = await self.send(transfer, self.customer, message='Hi')
         message = self.ok(result, 'sendMessage')
         receiver_ids = {int(user['id']) for user in message['receivers']}
-        self.assertEqual(receiver_ids, {self.driver.id, self.operator.id})
+        expected = {self.driver.id, self.operator.id, self.admin.id,
+                    self.staff.id}
+        self.assertEqual(receiver_ids, expected)
         result = await self.send(transfer, self.other_operator, message='Hi')
         self.assertEqual(self.error_code(result), 'ERR001')
         result = await self.send(transfer, self.other_driver, message='Hi')
@@ -979,7 +984,41 @@ class MessageTests(GraphQLTestCase):
         self.assertEqual(len(self.ok(result, 'messages')), 1)
         notifications = models.Notification.objects.filter(action='MESSAGE')
         user_ids = {n.user_id async for n in notifications}
-        self.assertEqual(user_ids, {self.driver.id, self.operator.id})
+        self.assertEqual(user_ids, expected)
+
+    async def test_admin_and_staff_join_every_conversation(self):
+        transfer = await models.Transfer.objects.acreate(
+            customer=self.customer, operator=self.operator,
+            driver=self.driver, status='ACCEPTED',
+            vehicle_category=self.sedan, state=self.turkey,
+            pickup_time=timezone.now() + timedelta(days=1),
+            duration=30, distance='10', passenger_name='X',
+            pickup_address='A', pickup_latitude=0, pickup_longitude=0,
+            dropoff_address='B', dropoff_latitude=0, dropoff_longitude=0
+        )
+        await User.objects.acreate(
+            email='admin2@example.com', role='ADMIN', first_name='Off',
+            last_name='Test', is_active=False
+        )
+        result = await self.send(transfer, self.customer, message='Hi')
+        message = self.ok(result, 'sendMessage')
+        receiver_ids = {int(user['id']) for user in message['receivers']}
+        participants = {self.driver.id, self.operator.id}
+        staff = {self.admin.id, self.staff.id}
+        self.assertEqual(receiver_ids, participants | staff)
+        notifications = models.Notification.objects.filter(action='MESSAGE')
+        user_ids = {n.user_id async for n in notifications}
+        self.assertEqual(user_ids, participants | staff)
+        # Staff can write too, the other participants receive it
+        result = await self.send(transfer, self.staff, message='Hello')
+        message = self.ok(result, 'sendMessage')
+        receiver_ids = {int(user['id']) for user in message['receivers']}
+        self.assertEqual(
+            receiver_ids, {self.customer.id, self.admin.id} | participants
+        )
+        variables = {'transferId': str(transfer.id)}
+        result = await self.execute(SEE_MESSAGES, variables, self.admin)
+        self.assertTrue(self.ok(result, 'seeMessages')['success'])
 
     async def test_update_message_marks_edited(self):
         transfer = await self.assigned_transfer()

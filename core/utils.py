@@ -141,6 +141,19 @@ def get_receiver_ids(sender_id, transfer):
     return get_participant_ids(transfer) - {sender_id}
 
 
+def check_messaging_access(user, transfer):
+    """ADMIN/STAFF can join every transfer's messaging."""
+    if user.role not in STAFF_ROLES:
+        check_participant(user, transfer)
+
+
+async def get_messaging_receiver_ids(sender_id, transfer):
+    """Participants and all active ADMIN/STAFF users, except the sender."""
+    staff = User.objects.filter(role__in=STAFF_ROLES, is_active=True)
+    staff_ids = {user_id async for user_id in staff.values_list('id', flat=True)}
+    return (get_participant_ids(transfer) | staff_ids) - {sender_id}
+
+
 def get_transfers(user, expand=()):
     transfers = models.Transfer.objects.select_related(*expand).all()
     if user.role in STAFF_ROLES:
