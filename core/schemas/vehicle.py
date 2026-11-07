@@ -6,7 +6,7 @@ from strawberry import Info
 from strawberry.exceptions import StrawberryGraphQLError as Error
 from strawberry_django.pagination import OffsetPaginationInput
 from typing import List, Optional
-from core import inputs, models, outputs, utils
+from core import enums, inputs, models, outputs, utils
 from core.decorators import permission_required
 
 
@@ -70,12 +70,16 @@ def normalize_plate(vehicle):
 
 @sb.type
 class Mutation:
-    @sb.mutation(description='ADMIN, STAFF, OPERATOR')
-    @permission_required('ADMIN', 'STAFF', 'OPERATOR')
+    @sb.mutation(description='ADMIN, STAFF, OPERATOR, DRIVER (own vehicle)')
+    @permission_required('ADMIN', 'STAFF', 'OPERATOR', 'DRIVER')
     async def create_vehicle(
         root, info: Info,
         data: inputs.CreateVehicle
     ) -> outputs.Vehicle:
+        user = info.context['user']
+        if user.role == enums.Role.DRIVER:
+            data.driver_id = user.id
+        assert data.driver_id, dumps({'code': 'ERR030'})
         await check_vehicle(data)
         vehicle = models.Vehicle()
         utils.set_attributes(vehicle, data, set_nulls=False)

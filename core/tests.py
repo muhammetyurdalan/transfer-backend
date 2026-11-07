@@ -816,7 +816,18 @@ class VehicleTests(GraphQLTestCase):
         self.assertEqual(self.ok(result, 'createVehicle')['plate'], '34 XYZ 99')
         result = await self.execute(CREATE_VEHICLE, {'data': data}, self.operator)
         self.assertEqual(self.error_code(result), 'ERR028')
+        # Driver adds own vehicle, a given driverId is ignored
+        data = {'driverId': str(self.other_driver.id), 'categoryId': str(self.van.id),
+                'plate': '34 DRV 01', 'brand': 'Ford', 'model': 'Tourneo'}
         result = await self.execute(CREATE_VEHICLE, {'data': data}, self.driver)
+        created = self.ok(result, 'createVehicle')
+        self.assertEqual(created['driver']['id'], str(self.driver.id))
+        # Others must give driverId
+        del data['driverId']
+        data['plate'] = '34 DRV 02'
+        result = await self.execute(CREATE_VEHICLE, {'data': data}, self.operator)
+        self.assertEqual(self.error_code(result), 'ERR030')
+        result = await self.execute(CREATE_VEHICLE, {'data': data}, self.customer)
         self.assertEqual(self.error_code(result), 'ERR001')
 
 

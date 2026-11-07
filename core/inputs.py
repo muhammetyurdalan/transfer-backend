@@ -207,7 +207,9 @@ class UpdateVehicleCategory:
 
 @sb.input
 class CreateVehicle:
-    driver_id: sb.ID = required('active user with DRIVER role')
+    driver_id: Optional[sb.ID] = optional(
+        'active user with DRIVER role, required except for DRIVER (always self)'
+    )
     category_id: sb.ID
     plate: str = required('20 chars max, unique')
     brand: str = required('50 chars max')

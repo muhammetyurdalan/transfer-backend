@@ -31,7 +31,7 @@ Testlerdeki traceback'ler beklenen `{"code": "ERR0xx"}` loglarıdır, sonuç sat
 |---|---|
 | `CUSTOMER` | Transfer oluşturur, araç kategorisi seçip öder, iptal eder, bahşiş verir, mesajlaşır |
 | `OPERATOR` | Ödenen transferlerden haberdar olur, uygun sürücüyü bulup atar, araç yönetir, iptal eder, mesajlaşır (atadığı transferde) |
-| `DRIVER` | Kendisine atanan transferleri görür, durumunu `STARTED`/`COMPLETED` yapar, mesajlaşır, bahşişlerini görür |
+| `DRIVER` | Kendisine atanan transferleri görür, durumunu `STARTED`/`COMPLETED` yapar, mesajlaşır, bahşişlerini görür, kendi adına araç ekler (`createVehicle`, `driverId` her zaman kendisi; diğer roller `driverId` vermezse `ERR030`) |
 | `ADMIN`, `STAFF` | Her şeyi görür. Araç kategorisi yönetimi ve iade (`refundTransaction`) sadece bunlarda |
 
 Kayıt e-posta doğrulamalı (`getCode` → `validateCode`) iki mutation'la yapılır: `createCustomer` (`CUSTOMER`) ve `createDriver` (`DRIVER`), ikisi de `CreateUser` input'unu alır. `OPERATOR`'ü ADMIN `updateAdminUser` ile verir.
