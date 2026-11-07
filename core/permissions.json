@@ -1,1 +1,44 @@
-{}
+{
+    "Transfer": {
+        "driver_name": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR"
+        ],
+        "driver_price": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR"
+        ],
+        "driver_price_currency": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR"
+        ]
+    },
+    "User": {
+        "status": [
+            "ADMIN",
+            "STAFF"
+        ]
+    },
+    "Transaction": {
+        "is_payout_sent": [
+            "OPERATOR",
+            "ADMIN",
+            "STAFF"
+        ]
+    },
+    "State": {
+        "psp": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR"
+        ],
+        "driver_buffer_minutes": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR"
+        ]
+    }
+}

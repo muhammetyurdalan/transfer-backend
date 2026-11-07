@@ -27,7 +27,7 @@ VALIDATE_CODE = '''
 mutation($data: ValidateCode!) { validateCode(data: $data) { secret } }
 '''
 CREATE_USER = '''
-mutation($data: CreateUser!) { createUser(data: $data) { token user { role } } }
+mutation($data: CreateUser!) { createCustomer(data: $data) { token user { role } } }
 '''
 VEHICLE_CATEGORIES = '''
 query($language: Language) {
@@ -84,6 +84,20 @@ query($transferId: ID!) { availableVehicles(transferId: $transferId) { id driver
 ASSIGN_DRIVER = f'''
 mutation($data: AssignDriver!) {{ assignDriver(data: $data) {{ {TRANSFER_FIELDS} }} }}
 '''
+DRIVER_FIELDS = 'driverName driverPrice driverPriceCurrency'
+ASSIGN_DRIVER_WITH_PRICE = f'''
+mutation($data: AssignDriver!) {{
+  assignDriver(data: $data) {{ {TRANSFER_FIELDS} {DRIVER_FIELDS} }}
+}}
+'''
+UPDATE_TRANSFER_DRIVER = f'''
+mutation($data: UpdateTransfer!) {{
+  updateTransfer(data: $data) {{ transfer {{ {DRIVER_FIELDS} }} }}
+}}
+'''
+TRANSFER_DRIVER = f'''
+query($id: ID!) {{ transfer(id: $id) {{ id {DRIVER_FIELDS} }} }}
+'''
 UPDATE_TRANSFER_STATUS = f'''
 mutation($data: UpdateTransferStatus!) {{
   updateTransferStatus(data: $data) {{ {TRANSFER_FIELDS} }}
@@ -94,6 +108,30 @@ mutation($id: ID!) {{ cancelTransfer(id: $id) {{ {TRANSFER_FIELDS} }} }}
 '''
 TIP_DRIVER = '''
 mutation($data: TipDriver!) { tipDriver(data: $data) { paymentLink } }
+'''
+CREATE_DRIVER = '''
+mutation($data: CreateUser!) { createDriver(data: $data) { token user { id role } } }
+'''
+CREATE_ADMIN_USER = '''
+mutation($data: CreateAdminUser!) {
+  createAdminUser(data: $data) { id role status }
+}
+'''
+UPDATE_ADMIN_USER = '''
+mutation($data: UpdateAdminUser!) {
+  updateAdminUser(data: $data) { id role status }
+}
+'''
+ADMIN_USER = '''
+query($id: ID!) { adminUser(id: $id) { id status } }
+'''
+UPDATE_TRANSACTION = '''
+mutation($data: UpdateTransaction!) {
+  updateTransaction(data: $data) { id note isPayoutSent }
+}
+'''
+PAYOUT_TRANSACTIONS = '''
+{ transactions { count transactions { id isPayoutSent } } }
 '''
 TRANSACTIONS = '''
 { transactions { count transactions { id category orderAmount parentId } } }
@@ -121,6 +159,42 @@ mutation($data: UpdateMessage!) {
 '''
 
 
+CITIES = '''
+query($filters: CityFilter) {
+  cities(filters: $filters, ordering: [{name: ASC}]) {
+    count cities { name stateId state { name psp } }
+  }
+}
+'''
+DISTRICTS = '''
+query($filters: DistrictFilter) {
+  districts(filters: $filters, ordering: [{name: ASC}]) {
+    count districts { name cityId }
+  }
+}
+'''
+CREATE_CITY = '''
+mutation($data: CreateCity!) { createCity(data: $data) { id name stateId } }
+'''
+UPDATE_CITY = '''
+mutation($data: UpdateCity!) { updateCity(data: $data) { id name stateId } }
+'''
+DELETE_CITY = '''
+mutation($id: ID!) { deleteCity(id: $id) { success } }
+'''
+CREATE_DISTRICT = '''
+mutation($data: CreateDistrict!) {
+  createDistrict(data: $data) { id name cityId isActive }
+}
+'''
+UPDATE_DISTRICT = '''
+mutation($data: UpdateDistrict!) {
+  updateDistrict(data: $data) { id name isActive }
+}
+'''
+DELETE_DISTRICT = '''
+mutation($id: ID!) { deleteDistrict(id: $id) { success } }
+'''
 STATE_FIELDS = '''
 id name code psp customerImposedHours customerImposedRates
 driverBufferMinutes
@@ -289,7 +363,7 @@ class GraphQLTestCase(TestCase):
 
 
 class UserTests(GraphQLTestCase):
-    async def sign_up(self, email, **kwargs):
+    async def sign_up(self, email, mutation=CREATE_USER, **kwargs):
         data = {'email': email, 'language': 'EN', 'isUser': False}
         result = await self.execute(GET_CODE, {'data': data})
         secret = self.ok(result, 'getCode')['secret']
@@ -301,13 +375,81 @@ class UserTests(GraphQLTestCase):
             'secret': secret, 'password': PASSWORD,
             'firstName': 'Ada', 'lastName': 'Lovelace', **kwargs
         }
-        return await self.execute(CREATE_USER, {'data': data})
+        return await self.execute(mutation, {'data': data})
 
     async def test_sign_up_role(self):
         result = await self.sign_up('new@example.com')
-        self.assertEqual(self.ok(result, 'createUser')['user']['role'], 'CUSTOMER')
-        result = await self.sign_up('newdriver@example.com', role='DRIVER')
-        self.assertEqual(self.ok(result, 'createUser')['user']['role'], 'DRIVER')
+        user = self.ok(result, 'createCustomer')['user']
+        self.assertEqual(user['role'], 'CUSTOMER')
+        result = await self.sign_up('newdriver@example.com', CREATE_DRIVER)
+        self.assertEqual(self.ok(result, 'createDriver')['user']['role'], 'DRIVER')
+
+    async def test_create_driver_is_pending(self):
+        data = {'email': 'd@example.com', 'language': 'TR', 'isUser': False}
+        result = await self.execute(GET_CODE, {'data': data})
+        secret = self.ok(result, 'getCode')['secret']
+        code = re.search(r'\d{6}', mail.outbox[-1].body).group()
+        result = await self.execute(
+            VALIDATE_CODE, {'data': {'code': code, 'secret': secret}}
+        )
+        secret = self.ok(result, 'validateCode')['secret']
+        data = {'secret': secret, 'password': PASSWORD, 'firstName': 'D',
+                'lastName': 'R'}
+        result = await self.execute(CREATE_DRIVER, {'data': data})
+        user = self.ok(result, 'createDriver')['user']
+        self.assertEqual(user['role'], 'DRIVER')
+        driver = await User.objects.aget(pk=user['id'])
+        self.assertEqual((driver.status, driver.language), ('PENDING', 'tr'))
+
+    async def test_create_admin_user(self):
+        data = {'email': 'Op@Example.com', 'password': PASSWORD,
+                'role': 'OPERATOR', 'firstName': 'O', 'lastName': 'P'}
+        result = await self.execute(
+            CREATE_ADMIN_USER, {'data': data}, self.operator
+        )
+        self.assertEqual(self.error_code(result), 'ERR001')
+        # Districts are required for OPERATOR
+        result = await self.execute(CREATE_ADMIN_USER, {'data': data}, self.staff)
+        self.assertEqual(self.error_code(result), 'ERR030')
+        data['districtIds'] = ['0']
+        result = await self.execute(CREATE_ADMIN_USER, {'data': data}, self.staff)
+        self.assertEqual(self.error_code(result), 'ERR035')
+        data['districtIds'] = [str(self.beyoglu.id)]
+        result = await self.execute(CREATE_ADMIN_USER, {'data': data}, self.staff)
+        created = self.ok(result, 'createAdminUser')
+        self.assertEqual(created['status'], 'ACCEPTED')
+        operator = await User.objects.aget(email='op@example.com')
+        district_ids = [d.id async for d in operator.districts.all()]
+        self.assertEqual(district_ids, [self.beyoglu.id])
+        result = await self.execute(CREATE_ADMIN_USER, {'data': data}, self.staff)
+        self.assertEqual(self.error_code(result), 'ERR011')
+        data = {'email': 'a2@example.com', 'password': PASSWORD,
+                'role': 'ADMIN', 'firstName': 'A', 'lastName': 'B'}
+        result = await self.execute(CREATE_ADMIN_USER, {'data': data}, self.staff)
+        self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.execute(CREATE_ADMIN_USER, {'data': data}, self.admin)
+        self.assertEqual(self.ok(result, 'createAdminUser')['role'], 'ADMIN')
+
+    async def test_status_visibility_and_update(self):
+        variables = {'id': str(self.driver.id)}
+        result = await self.execute(ADMIN_USER, variables, self.operator)
+        self.assertIsNone(self.ok(result, 'adminUser')['status'])
+        result = await self.execute(ADMIN_USER, variables, self.staff)
+        self.assertEqual(self.ok(result, 'adminUser')['status'], 'PENDING')
+        data = {'id': str(self.driver.id), 'status': 'ACCEPTED'}
+        result = await self.execute(UPDATE_ADMIN_USER, {'data': data}, self.staff)
+        self.assertEqual(self.ok(result, 'updateAdminUser')['status'], 'ACCEPTED')
+        # STAFF can only change the status
+        data = {'id': str(self.driver.id), 'role': 'ADMIN'}
+        result = await self.execute(UPDATE_ADMIN_USER, {'data': data}, self.staff)
+        self.assertEqual(self.error_code(result), 'ERR001')
+        data = {'id': str(self.driver.id), 'status': 'REJECTED'}
+        result = await self.execute(
+            UPDATE_ADMIN_USER, {'data': data}, self.operator
+        )
+        self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.execute(UPDATE_ADMIN_USER, {'data': data}, self.admin)
+        self.assertEqual(self.ok(result, 'updateAdminUser')['status'], 'REJECTED')
 
     async def test_sign_up_cannot_choose_other_roles(self):
         result = await self.sign_up('x@example.com', role='OPERATOR')
@@ -342,6 +484,262 @@ class VehicleCategoryTests(GraphQLTestCase):
             CREATE_VEHICLE_CATEGORY, {'data': data}, self.staff
         )
         self.assertEqual(self.error_code(result), 'ERR030')
+
+
+class DriverPriceTests(GraphQLTestCase):
+    async def orm_transfer(self, status='ACCEPTED', **kwargs):
+        return await models.Transfer.objects.acreate(
+            customer=self.customer, operator=self.operator, status=status,
+            vehicle_category=self.sedan, state=self.turkey,
+            pickup_time=timezone.now() + timedelta(days=1),
+            duration=30, distance='10', passenger_name='X',
+            pickup_address='A', pickup_latitude=0, pickup_longitude=0,
+            dropoff_address='B', dropoff_latitude=0, dropoff_longitude=0,
+            **kwargs
+        )
+
+    async def test_assign_driver_sets_driver_fields(self):
+        transfer = await self.orm_transfer()
+        data = {'id': str(transfer.id), 'driverId': str(self.driver.id),
+                'driverPrice': '150.5', 'driverPriceCurrency': 'EUR'}
+        result = await self.execute(
+            ASSIGN_DRIVER_WITH_PRICE, {'data': data}, self.operator
+        )
+        assigned = self.ok(result, 'assignDriver')
+        self.assertEqual(assigned['driverName'], 'driver Test')
+        self.assertEqual(assigned['driverPrice'], '150.50')
+        self.assertEqual(assigned['driverPriceCurrency'], 'EUR')
+        # A negative price is saved as zero
+        data['driverPrice'] = '-1'
+        result = await self.execute(
+            ASSIGN_DRIVER_WITH_PRICE, {'data': data}, self.operator
+        )
+        self.assertEqual(self.ok(result, 'assignDriver')['driverPrice'], '0.00')
+
+    async def test_update_transfer_driver_fields(self):
+        transfer = await self.orm_transfer(status='PENDING')
+        data = {'id': str(transfer.id), 'driverName': 'Ali',
+                'driverPrice': '100', 'driverPriceCurrency': 'TRY'}
+        result = await self.execute(
+            UPDATE_TRANSFER, {'data': data}, self.customer
+        )
+        self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.execute(
+            UPDATE_TRANSFER_DRIVER, {'data': data}, self.operator
+        )
+        updated = self.ok(result, 'updateTransfer')['transfer']
+        self.assertEqual(
+            updated,
+            {'driverName': 'Ali', 'driverPrice': '100.00',
+             'driverPriceCurrency': 'TRY'}
+        )
+        # After the assignment: driver fields only, name kept
+        await models.Transfer.objects.filter(pk=transfer.id).aupdate(
+            status='ACCEPTED', driver=self.driver, driver_name='driver Test'
+        )
+        data = {'id': str(transfer.id), 'driverName': 'Veli',
+                'driverPrice': '120'}
+        result = await self.execute(
+            UPDATE_TRANSFER_DRIVER, {'data': data}, self.admin
+        )
+        updated = self.ok(result, 'updateTransfer')['transfer']
+        self.assertEqual(updated['driverName'], 'driver Test')
+        self.assertEqual(updated['driverPrice'], '120.00')
+        data = {'id': str(transfer.id), 'driverPrice': '130', 'note': 'x'}
+        result = await self.execute(
+            UPDATE_TRANSFER_DRIVER, {'data': data}, self.admin
+        )
+        self.assertEqual(self.error_code(result), 'ERR014')
+
+    async def test_driver_fields_hidden_from_customer(self):
+        transfer = await self.orm_transfer(
+            driver_name='Ali', driver_price='100', driver_price_currency='TRY'
+        )
+        variables = {'id': str(transfer.id)}
+        result = await self.execute(TRANSFER_DRIVER, variables, self.customer)
+        self.assertEqual(
+            self.ok(result, 'transfer'),
+            {'id': str(transfer.id), 'driverName': None, 'driverPrice': None,
+             'driverPriceCurrency': None}
+        )
+        result = await self.execute(TRANSFER_DRIVER, variables, self.operator)
+        self.assertEqual(self.ok(result, 'transfer')['driverName'], 'Ali')
+
+
+class PayoutTests(GraphQLTestCase):
+    async def create_payment(self, operator):
+        transfer = await models.Transfer.objects.acreate(
+            customer=self.customer, operator=operator, status='ACCEPTED',
+            vehicle_category=self.sedan, state=self.turkey,
+            pickup_time=timezone.now() + timedelta(days=1),
+            duration=30, distance='10', passenger_name='X',
+            pickup_address='A', pickup_latitude=0, pickup_longitude=0,
+            dropoff_address='B', dropoff_latitude=0, dropoff_longitude=0
+        )
+        return await models.Transaction.objects.acreate(
+            transfer=transfer, user=self.customer, category='PAYMENT',
+            order_amount='100', currency='TRY', order_time=timezone.now()
+        )
+
+    async def test_update_transaction(self):
+        payment = await self.create_payment(self.operator)
+        data = {'id': str(payment.id), 'note': 'Paid', 'isPayoutSent': True}
+        for user in (self.customer, self.driver):
+            result = await self.execute(UPDATE_TRANSACTION, {'data': data}, user)
+            self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.execute(
+            UPDATE_TRANSACTION, {'data': data}, self.other_operator
+        )
+        self.assertEqual(self.error_code(result), 'ERR034')
+        result = await self.execute(
+            UPDATE_TRANSACTION, {'data': data}, self.operator
+        )
+        self.assertEqual(
+            self.ok(result, 'updateTransaction'),
+            {'id': str(payment.id), 'note': 'Paid', 'isPayoutSent': True}
+        )
+        data = {'id': str(payment.id), 'isPayoutSent': False}
+        result = await self.execute(UPDATE_TRANSACTION, {'data': data}, self.staff)
+        updated = self.ok(result, 'updateTransaction')
+        self.assertEqual((updated['note'], updated['isPayoutSent']),
+                         ('Paid', False))
+
+    async def test_is_payout_sent_visibility(self):
+        await self.create_payment(self.operator)
+        result = await self.execute(PAYOUT_TRANSACTIONS, user=self.customer)
+        rows = self.ok(result, 'transactions')['transactions']
+        self.assertEqual([row['isPayoutSent'] for row in rows], [None])
+        for user in (self.operator, self.admin):
+            result = await self.execute(PAYOUT_TRANSACTIONS, user=user)
+            rows = self.ok(result, 'transactions')['transactions']
+            self.assertEqual([row['isPayoutSent'] for row in rows], [False])
+        result = await self.execute(PAYOUT_TRANSACTIONS, user=self.other_operator)
+        self.assertEqual(self.ok(result, 'transactions')['count'], 0)
+
+    async def test_transfer_transactions_scoped_by_role(self):
+        payment = await self.create_payment(self.operator)
+        transfer = await models.Transfer.objects.aget(pk=payment.transfer_id)
+        transfer.driver = self.driver
+        await transfer.asave()
+        tip = await models.Transaction.objects.acreate(
+            transfer=transfer, user=self.customer, category='TIP',
+            order_amount='10', currency='TRY', order_time=timezone.now()
+        )
+        query = '''
+        query($id: ID!) { transfer(id: $id) { transactions { id } } }
+        '''
+        variables = {'id': str(transfer.id)}
+        expected = {
+            self.customer: {payment.id, tip.id},
+            self.driver: {tip.id},
+            self.operator: {payment.id, tip.id},
+            self.admin: {payment.id, tip.id},
+        }
+        for user, ids in expected.items():
+            result = await self.execute(query, variables, user)
+            rows = self.ok(result, 'transfer')['transactions']
+            self.assertEqual({int(row['id']) for row in rows}, ids, user.role)
+
+    async def test_filter_by_is_payout_sent(self):
+        payment = await self.create_payment(self.operator)
+        query = '''
+        query($sent: Boolean) {
+          transactions(filters: {isPayoutSent: $sent}) { count }
+        }
+        '''
+        result = await self.execute(query, {'sent': False}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.execute(query, {'sent': True}, self.operator)
+        self.assertEqual(self.ok(result, 'transactions')['count'], 0)
+        payment.is_payout_sent = True
+        await payment.asave()
+        result = await self.execute(query, {'sent': True}, self.admin)
+        self.assertEqual(self.ok(result, 'transactions')['count'], 1)
+
+
+class LocationTests(GraphQLTestCase):
+    async def test_public_queries(self):
+        result = await self.execute(CITIES)
+        data = self.ok(result, 'cities')
+        self.assertEqual(
+            [city['name'] for city in data['cities']], ['Athens', 'Istanbul']
+        )
+        # State's payment provider is not public
+        self.assertIsNone(data['cities'][0]['state']['psp'])
+        await models.State.objects.filter(pk=self.greece.id).aupdate(psp='x')
+        result = await self.execute(CITIES, user=self.admin)
+        cities = self.ok(result, 'cities')['cities']
+        self.assertEqual(cities[0]['state']['psp'], 'x')
+        filters = {'stateId': {'exact': str(self.turkey.id)}}
+        result = await self.execute(CITIES, {'filters': filters})
+        self.assertEqual(self.ok(result, 'cities')['count'], 1)
+        result = await self.execute(DISTRICTS)
+        names = [d['name'] for d in self.ok(result, 'districts')['districts']]
+        self.assertEqual(names, ['Arnavutkoy', 'Beyoglu', 'Glyfada'])
+        result = await self.execute(DISTRICTS, user=self.staff)
+        self.assertEqual(self.ok(result, 'districts')['count'], 4)
+        filters = {'stateId': str(self.greece.id)}
+        result = await self.execute(DISTRICTS, {'filters': filters})
+        names = [d['name'] for d in self.ok(result, 'districts')['districts']]
+        self.assertEqual(names, ['Glyfada'])
+
+    async def test_city_crud(self):
+        data = {'stateId': str(self.turkey.id), 'name': 'Ankara'}
+        result = await self.execute(CREATE_CITY, {'data': data})
+        self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.execute(CREATE_CITY, {'data': data}, self.operator)
+        self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.execute(CREATE_CITY, {'data': data}, self.staff)
+        city = self.ok(result, 'createCity')
+        data = {'id': city['id'], 'stateId': '0'}
+        result = await self.execute(UPDATE_CITY, {'data': data}, self.admin)
+        self.assertEqual(self.error_code(result), 'ERR036')
+        data = {'id': city['id'], 'name': 'Izmir'}
+        result = await self.execute(UPDATE_CITY, {'data': data}, self.admin)
+        self.assertEqual(self.ok(result, 'updateCity')['name'], 'Izmir')
+        result = await self.execute(DELETE_CITY, {'id': city['id']}, self.admin)
+        self.assertTrue(self.ok(result, 'deleteCity')['success'])
+        result = await self.execute(DELETE_CITY, {'id': city['id']}, self.admin)
+        self.assertEqual(self.error_code(result), 'ERR039')
+
+    async def test_district_crud(self):
+        data = {'cityId': '0', 'name': 'Kadikoy'}
+        result = await self.execute(CREATE_DISTRICT, {'data': data}, self.staff)
+        self.assertEqual(self.error_code(result), 'ERR039')
+        data['cityId'] = str(self.beyoglu.city_id)
+        result = await self.execute(
+            CREATE_DISTRICT, {'data': data}, self.driver
+        )
+        self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.execute(CREATE_DISTRICT, {'data': data}, self.staff)
+        district = self.ok(result, 'createDistrict')
+        self.assertTrue(district['isActive'])
+        data = {'id': district['id'], 'isActive': False, 'name': ' '}
+        result = await self.execute(UPDATE_DISTRICT, {'data': data}, self.admin)
+        self.assertEqual(self.error_code(result), 'ERR030')
+        data['name'] = 'Kadıköy'
+        result = await self.execute(UPDATE_DISTRICT, {'data': data}, self.admin)
+        self.assertFalse(self.ok(result, 'updateDistrict')['isActive'])
+        await models.Transfer.objects.acreate(
+            customer=self.customer, state=self.turkey,
+            pickup_district=self.beyoglu, vehicle_category=self.sedan,
+            pickup_time=timezone.now() + timedelta(days=1),
+            duration=30, distance='10', passenger_name='X',
+            pickup_address='A', pickup_latitude=0, pickup_longitude=0,
+            dropoff_address='B', dropoff_latitude=0, dropoff_longitude=0
+        )
+        result = await self.execute(
+            DELETE_DISTRICT, {'id': self.beyoglu.id}, self.admin
+        )
+        self.assertEqual(self.error_code(result), 'ERR041')
+        result = await self.execute(
+            DELETE_CITY, {'id': self.beyoglu.city_id}, self.admin
+        )
+        self.assertEqual(self.error_code(result), 'ERR040')
+        result = await self.execute(
+            DELETE_DISTRICT, {'id': district['id']}, self.admin
+        )
+        self.assertTrue(self.ok(result, 'deleteDistrict')['success'])
 
 
 class StateTests(GraphQLTestCase):

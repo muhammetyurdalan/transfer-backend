@@ -40,7 +40,19 @@ class CreateUser:
     last_name: str = required('50 chars max')
     phone: Optional[str] = optional('20 chars max')
     profile_image: Optional[Upload] = optional()
-    role: Optional[enums.SignUpRole] = optional('default CUSTOMER')
+
+
+@sb.input
+class CreateAdminUser:
+    email: str = required('100 chars max, unique')
+    password: str = required('128 chars max')
+    role: enums.Role = required('only ADMIN can create ADMIN')
+    first_name: str = required('50 chars max')
+    last_name: str = required('50 chars max')
+    phone: Optional[str] = optional('20 chars max')
+    language: Optional[enums.Language] = optional('default EN')
+    profile_image: Optional[Upload] = optional()
+    district_ids: Optional[List[sb.ID]] = optional('required for OPERATOR')
 
 
 @sb.input
@@ -67,8 +79,9 @@ class UpdateUser:
 @sb.input
 class UpdateAdminUser:
     id: sb.ID
-    role: Optional[enums.Role] = optional()
-    is_active: Optional[bool] = optional()
+    role: Optional[enums.Role] = optional('ADMIN')
+    is_active: Optional[bool] = optional('ADMIN')
+    status: Optional[enums.VerifyStatus] = optional('ADMIN, STAFF')
 
 
 @sb.input
@@ -117,6 +130,34 @@ class UpdateState:
         'replaces the list, send with customerImposedHours'
     )
     driver_buffer_minutes: Optional[int] = optional()
+
+
+@sb.input
+class CreateCity:
+    state_id: sb.ID
+    name: str = required('50 chars max')
+
+
+@sb.input
+class UpdateCity:
+    id: sb.ID
+    state_id: Optional[sb.ID] = optional()
+    name: Optional[str] = optional('50 chars max')
+
+
+@sb.input
+class CreateDistrict:
+    city_id: sb.ID
+    name: str = required('50 chars max')
+    is_active: Optional[bool] = optional('default true')
+
+
+@sb.input
+class UpdateDistrict:
+    id: sb.ID
+    city_id: Optional[sb.ID] = optional()
+    name: Optional[str] = optional('50 chars max')
+    is_active: Optional[bool] = optional()
 
 
 # Vehicle category
@@ -264,6 +305,16 @@ class UpdateTransfer:
     passenger_phone: Optional[str] = optional('20 chars max')
     flight_number: Optional[str] = optional('10 chars max')
     note: Optional[str] = optional()
+    driver_name: Optional[str] = optional(
+        'OPERATOR, ADMIN, STAFF. 100 chars max, '
+        'ignored if a driver is assigned'
+    )
+    driver_price: Optional[Decimal] = optional(
+        'OPERATOR, ADMIN, STAFF. 8.2, >= 0'
+    )
+    driver_price_currency: Optional[enums.Currency] = optional(
+        'OPERATOR, ADMIN, STAFF'
+    )
 
 
 @sb.input
@@ -279,6 +330,8 @@ class AssignDriver:
     vehicle_id: Optional[sb.ID] = optional(
         "driver's suitable vehicle, default: the first one"
     )
+    driver_price: Optional[Decimal] = optional('8.2, >= 0')
+    driver_price_currency: Optional[enums.Currency] = optional()
 
 
 @sb.input
@@ -300,6 +353,13 @@ class RefundTransaction:
     id: sb.ID = required('PAYMENT or TIP transaction')
     amount: Optional[Decimal] = optional('8.2, default: all refundable')
     note: Optional[str] = optional()
+
+
+@sb.input
+class UpdateTransaction:
+    id: sb.ID
+    note: Optional[str] = optional()
+    is_payout_sent: Optional[bool] = optional()
 
 
 # Message

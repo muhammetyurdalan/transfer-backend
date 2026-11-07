@@ -92,6 +92,11 @@ class User(AbstractBaseUser):
     )
     profile_image = models.FileField(upload_to=upload_to, blank=True)
     psp_data = models.JSONField(default=dict)
+    status = models.CharField(
+        max_length=10,
+        choices=enums.VerifyStatus.choices,
+        default=enums.VerifyStatus.PENDING
+    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     districts = models.ManyToManyField(District, related_name='users')
@@ -291,6 +296,13 @@ class Transfer(models.Model):
         choices=enums.Currency.choices,
         blank=True, null=True
     )
+    driver_name = models.CharField(max_length=100, blank=True, null=True)
+    driver_price = models.DecimalField(**DECIMAL_10, blank=True, null=True)
+    driver_price_currency = models.CharField(
+        max_length=3,
+        choices=enums.Currency.choices,
+        blank=True, null=True
+    )
     psp_data = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -361,6 +373,7 @@ class Transaction(models.Model):
     order_id = models.CharField(max_length=100, blank=True)
     order_time = models.DateTimeField()
     note = models.TextField(blank=True)
+    is_payout_sent = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['-order_time', '-id']

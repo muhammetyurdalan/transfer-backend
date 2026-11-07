@@ -12,6 +12,13 @@ class Role(TextChoices):
 
 
 @enum
+class VerifyStatus(TextChoices):
+    PENDING = 'PENDING'
+    ACCEPTED = 'ACCEPTED'
+    REJECTED = 'REJECTED'
+
+
+@enum
 class SignUpRole(TextChoices):
     CUSTOMER = 'CUSTOMER'
     DRIVER = 'DRIVER'

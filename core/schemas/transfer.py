@@ -32,6 +32,9 @@ ROUTE_FIELDS = [
     'luggage_count', 'child_seat_count', 'needs_wheelchair'
 ]
 DISTRICT_NAME_FIELDS = ['pickup_district_name', 'dropoff_district_name']
+# Set by OPERATOR/ADMIN/STAFF, also after the assignment
+DRIVER_FIELDS = ['driver_name', 'driver_price', 'driver_price_currency']
+DRIVER_EDITABLE_STATUSES = [Status.PENDING, Status.ACCEPTED, Status.STARTED]
 IGNORED_CREATE_FIELDS = [*DISTRICT_NAME_FIELDS, 'legs']
 
 
@@ -245,6 +248,23 @@ def check_pickup_time(pickup_time):
     assert pickup_time > timezone.now(), dumps({'code': 'ERR016'})
 
 
+def set_driver_fields(transfer, data):
+    """driver_name is kept if a driver is assigned (set from the driver)."""
+    ignored = [] if transfer.driver_id is None else ['driver_name']
+    fields = {
+        key: value for key, value in utils.get_fields(data).items()
+        if key in DRIVER_FIELDS and key not in ignored
+    }
+    utils.set_attributes(transfer, fields, set_nulls=False)
+    if price := data.driver_price:
+        price = max(price, ZERO).quantize(ZERO)
+        transfer.driver_price = price
+
+
+def get_driver_name(driver):
+    return f'{driver.first_name} {driver.last_name}'.strip()[:100]
+
+
 def clear_vehicle_selection(transfer):
     transfer.vehicle_category = None
     transfer.price = None
@@ -303,12 +323,32 @@ class Mutation:
         """
         user = info.context['user']
         expand = ['customer']
-        transfer = await get_transfer(user, data.id, EDITABLE_STATUSES, expand)
-        ignored = ['id', *DISTRICT_NAME_FIELDS]
+        fields = {
+            key: value for key, value in utils.get_fields(data).items()
+            if value is not None
+        }
+        driver_fields = [key for key in fields if key in DRIVER_FIELDS]
+        if driver_fields:
+            allowed = user.role in utils.DISPATCH_ROLES
+            assert allowed, dumps({'code': 'ERR001'})
+        driver_only = bool(driver_fields)
+        driver_only = driver_only and len(driver_fields) == len(fields)
+        statuses = EDITABLE_STATUSES
+        if driver_only:
+            statuses = DRIVER_EDITABLE_STATUSES
+        transfer = await get_transfer(user, data.id, statuses, expand)
+        set_driver_fields(transfer, data)
+        if driver_only:
+            await transfer.asave()
+            activate(user.language)
+            return outputs.TransferResponse(
+                transfer=transfer,
+                vehicle_options=await get_vehicle_options(transfer)
+            )
+        ignored = ['id', *DISTRICT_NAME_FIELDS, *DRIVER_FIELDS]
         utils.set_attributes(transfer, data, ignored=ignored, set_nulls=False)
         check_transfer(transfer)
         check_pickup_time(transfer.pickup_time)
-        fields = utils.get_fields(data)
         if any(fields.get(key) for key in DISTRICT_NAME_FIELDS):
             await set_districts(transfer, data)
         if any(fields.get(key) is not None for key in ROUTE_FIELDS):
@@ -369,11 +409,13 @@ class Mutation:
         vehicles = vehicles.filter(driver_id=data.driver_id)
         if data.vehicle_id:
             vehicles = vehicles.filter(pk=data.vehicle_id)
-        vehicle = await vehicles.afirst()
+        vehicle = await vehicles.select_related('driver').afirst()
         assert vehicle, dumps({'code': 'ERR027'})
         previous_driver_id = transfer.driver_id
         transfer.driver_id = vehicle.driver_id
         transfer.vehicle = vehicle
+        transfer.driver_name = get_driver_name(vehicle.driver)
+        set_driver_fields(transfer, data)
         if user.role == Role.OPERATOR:
             transfer.operator = user
         await transfer.asave()

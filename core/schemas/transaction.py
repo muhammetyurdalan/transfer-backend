@@ -1,4 +1,3 @@
-from django.db.models import Q
 from json import dumps
 import strawberry as sb
 import strawberry_django as sbd
@@ -14,18 +13,7 @@ manager = models.Transaction.objects
 REFUNDABLE_CATEGORIES = [Category.PAYMENT, Category.TIP]
 
 
-def get_transactions(user):
-    """
-    ADMIN/STAFF: all. DRIVER: tips (and their refunds) of own transfers.
-    Others: own payments, tips and refunds.
-    """
-    transactions = manager.all()
-    if user.role in utils.STAFF_ROLES:
-        return transactions
-    if user.role == enums.Role.DRIVER:
-        tips = Q(category=Category.TIP) | Q(parent__category=Category.TIP)
-        return transactions.filter(tips, transfer__driver=user)
-    return transactions.filter(user=user)
+get_transactions = utils.get_transactions
 
 
 @sb.type
@@ -40,6 +28,10 @@ class Query:
     ) -> outputs.TransactionsPaginated:
         user = info.context['user']
         transactions = get_transactions(user)
+        if filters and filters.is_payout_sent is not sb.UNSET:
+            # Hidden field: others could infer it by filtering
+            allowed = user.role in utils.DISPATCH_ROLES
+            assert allowed, dumps({'code': 'ERR001'})
         if filters:
             transactions = sbd.filters.apply(filters, transactions, info)
         count = await utils.get_count(info, transactions)
@@ -70,3 +62,21 @@ class Mutation:
         amount = data.amount or None
         note = data.note or ''
         return await psp.refund_transaction(transaction, amount, note)
+
+    @sb.mutation(description='OPERATOR, ADMIN, STAFF')
+    @permission_required('OPERATOR', 'ADMIN', 'STAFF')
+    async def update_transaction(
+        root, info: Info,
+        data: inputs.UpdateTransaction
+    ) -> outputs.Transaction:
+        """OPERATOR: only transactions of the transfers they operate."""
+        user = info.context['user']
+        transaction = await get_transactions(user).filter(pk=data.id).afirst()
+        assert transaction, dumps({'code': 'ERR034'})
+        fields = {
+            key: value for key, value in utils.get_fields(data).items()
+            if value is not None
+        }
+        utils.set_attributes(transaction, fields)
+        await transaction.asave(update_fields=list(fields) or None)
+        return transaction

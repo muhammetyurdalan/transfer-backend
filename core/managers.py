@@ -41,10 +41,12 @@ class UserManager(BaseUserManager.from_queryset(UserQuerySet)):
 
     def create_superuser(self, email, password=None, **kwargs):
         kwargs['role'] = 'ADMIN'
+        kwargs.setdefault('status', 'ACCEPTED')
         return self.create_user(email, password, **kwargs)
 
     def create_staff(self, email, password=None, **kwargs):
         kwargs['role'] = 'STAFF'
+        kwargs.setdefault('status', 'ACCEPTED')
         return self.create_user(email, password, **kwargs)
 
 

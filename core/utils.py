@@ -5,6 +5,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from datetime import timedelta
 from django.apps import apps
 from django.conf import settings
+from django.db.models import Q
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.translation import activate, gettext
@@ -163,6 +164,24 @@ def get_transfers(user, expand=()):
     if user.role == enums.Role.DRIVER:
         return transfers.filter(driver=user)
     return transfers.filter(customer=user)
+
+
+def get_transactions(user):
+    """
+    ADMIN/STAFF: all. OPERATOR: transactions of the transfers they operate.
+    DRIVER: tips (and their refunds) of own transfers.
+    Others: own payments, tips and refunds.
+    """
+    Category = enums.TransactionCategory
+    transactions = models.Transaction.objects.all()
+    if user.role in STAFF_ROLES:
+        return transactions
+    if user.role == enums.Role.OPERATOR:
+        return transactions.filter(transfer__operator=user)
+    if user.role == enums.Role.DRIVER:
+        tips = Q(category=Category.TIP) | Q(parent__category=Category.TIP)
+        return transactions.filter(tips, transfer__driver=user)
+    return transactions.filter(user=user)
 
 
 async def get_operator_ids():

@@ -8,7 +8,7 @@ from strawberry import Info
 from strawberry.permission import BasePermission, PermissionExtension
 from strawberry_django.fields.types import field_type_map
 from typing import Any, List, Optional
-from core import enums, models
+from core import enums, models, utils
 from core.decorators import get_user
 
 
@@ -88,6 +88,7 @@ class UserOrder:
 @sbd.type(models.User, exclude=['password', 'last_login', 'psp_data'])
 class User:
     role: Optional[enums.Role]
+    status: Optional[enums.VerifyStatus]
     language: Optional[enums.Language]
     profile_image: Optional[str]
     name: Optional[str]
@@ -209,19 +210,64 @@ class StatesPaginated:
     count: Optional[int]
 
 
+@sbd.filter_type(models.City)
+class CityFilter:
+    id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
+    name: Optional[sbd.StrFilterLookup] = sb.UNSET
+    state_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
+
+
+@sbd.order_type(models.City)
+class CityOrder:
+    id: sb.auto
+    name: sb.auto
+
+
 @sbd.type(models.City, exclude=['districts'])
 class City:
     state_id: sb.ID
     state: Optional[State]
 
 
+@sb.type
+class CitiesPaginated:
+    cities: Optional[List[City]]
+    count: Optional[int]
+
+
+@sbd.filter_type(models.District)
+class DistrictFilter:
+    id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
+    name: Optional[sbd.StrFilterLookup] = sb.UNSET
+    city_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
+    is_active: Optional[bool] = sb.UNSET
+
+    @sbd.filter_field
+    def state_id(
+        self, value: Optional[sb.ID], prefix: str
+    ) -> Q:
+        return Q(**{f'{prefix}city__state_id': value})
+
+
+@sbd.order_type(models.District)
+class DistrictOrder:
+    id: sb.auto
+    name: sb.auto
+
+
 @sbd.type(
     models.District,
-    exclude=['pickup_transfers', 'dropoff_transfers']
+    exclude=['pickup_transfers', 'dropoff_transfers', 'users']
 )
 class District:
     city_id: sb.ID
     city: Optional[City]
+
+
+@sb.type
+class DistrictsPaginated:
+    districts: Optional[List[District]]
+    count: Optional[int]
 
 
 # Vehicle
@@ -325,6 +371,15 @@ class Transfer:
     legs: Optional[List[Leg]]
     status: Optional[enums.TransferStatus]
     currency: Optional[enums.Currency]
+    driver_price_currency: Optional[enums.Currency]
+
+    @sbd.field(description='Scoped by role, like the transactions query')
+    async def transactions(self, info: Info) -> List['Transaction']:
+        user = get_user(info.context)
+        if not user:
+            return []
+        transactions = utils.get_transactions(user).filter(transfer_id=self.id)
+        return [transaction async for transaction in transactions]
 
 
 @sb.type
@@ -366,6 +421,9 @@ class TransactionFilter:
         sbd.BaseFilterLookup[enums.TransactionCategory]
     ] = sb.UNSET
     order_time: Optional[sbd.DatetimeFilterLookup] = sb.UNSET
+    is_payout_sent: Optional[bool] = sb.field(
+        default=sb.UNSET, description='OPERATOR, ADMIN, STAFF'
+    )
 
 
 @sbd.order_type(models.Transaction)

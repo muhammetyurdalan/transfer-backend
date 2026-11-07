@@ -9,6 +9,10 @@ from strawberry.tools import merge_types
 from strawberry.utils.str_converters import to_snake_case
 from strawberry_django.optimizer import DjangoOptimizerExtension
 from core.decorators import get_user
+from core.schemas.city import Query as city_query
+from core.schemas.city import Mutation as city_mutation
+from core.schemas.district import Query as district_query
+from core.schemas.district import Mutation as district_mutation
 from core.schemas.message import Query as message_query
 from core.schemas.message import Mutation as message_mutation
 from core.schemas.notification import Query as notification_query
@@ -31,6 +35,8 @@ from core.schemas.vehicle_category import (
 
 
 queries = (
+    city_query,
+    district_query,
     message_query,
     notification_query,
     state_query,
@@ -42,6 +48,8 @@ queries = (
 )
 
 mutations = (
+    city_mutation,
+    district_mutation,
     message_mutation,
     notification_mutation,
     state_mutation,

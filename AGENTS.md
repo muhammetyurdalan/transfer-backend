@@ -34,7 +34,10 @@ Testlerdeki traceback'ler beklenen `{"code": "ERR0xx"}` loglarıdır, sonuç sat
 | `DRIVER` | Kendisine atanan transferleri görür, durumunu `STARTED`/`COMPLETED` yapar, mesajlaşır, bahşişlerini görür |
 | `ADMIN`, `STAFF` | Her şeyi görür. Araç kategorisi yönetimi ve iade (`refundTransaction`) sadece bunlarda |
 
-Kayıtta (`createUser.role`) sadece `CUSTOMER` (varsayılan) veya `DRIVER` seçilebilir. `OPERATOR`'ü ADMIN `updateAdminUser` ile verir. Kullanıcı iletişim bilgisi (`email`, `phone`) sadece kişinin kendisine ve ADMIN/STAFF/OPERATOR'e görünür.
+Kayıt e-posta doğrulamalı (`getCode` → `validateCode`) iki mutation'la yapılır: `createCustomer` (`CUSTOMER`) ve `createDriver` (`DRIVER`), ikisi de `CreateUser` input'unu alır. `OPERATOR`'ü ADMIN `updateAdminUser` ile verir.
+
+- **`User.status`** (`VerifyStatus`: `PENDING` varsayılan, `ACCEPTED`, `REJECTED`): sadece ADMIN/STAFF görür (`permissions.json`). `updateAdminUser` ile ADMIN ve STAFF günceller, STAFF bu mutation'da sadece `status` gönderebilir (`role`/`isActive` ADMIN'e özel, `ERR001`). `createCustomer`/`createDriver` ile açılanlar `PENDING`. Status henüz hiçbir akışı (giriş, atama) etkilemiyor.
+- **`createAdminUser`** (ADMIN, STAFF): e-posta + şifre ile her rolde kullanıcı açar, `status=ACCEPTED`. `ADMIN`'i sadece ADMIN açabilir (`ERR001`). Opsiyonel `districtIds`, `OPERATOR` için zorunlu (`ERR030`), bulunamayan district `ERR035`. Kullanıcı iletişim bilgisi (`email`, `phone`) sadece kişinin kendisine ve ADMIN/STAFF/OPERATOR'e görünür.
 
 ## 4. Akış
 
@@ -57,7 +60,7 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 - `state_id` = pickup district'in state'i, o yoksa dropoff'unki.
 - `updateTransfer` bu isimlerden birini alırsa yeniden hesaplanır, verilmeyen taraf mevcut district'ini korur.
 - Aynı isimde birden fazla district varsa (ör. "Merkez") ilk eşleşen (alfabetik) alınır. Şehir adı alınmadığı için ayırt edilemez.
-- City/District verileri admin panelinden girilir, GraphQL'de sorgusu yok.
+- **City** (`schemas/city.py`) ve **District** (`schemas/district.py`): `city`/`cities`, `district`/`districts` token'sız çalışır (public). Pasif district'leri sadece ADMIN/STAFF görür. `districts` filtresinde `stateId` var. `create`/`update`/`delete` ADMIN, STAFF. Şehir silmek district'lerini de siler. Transferde kullanılan district/şehir silinemez (`ERR041`/`ERR040`), district pasifleştirilmeli. Public sorgular `state`'i açtığı için `State.psp` ve `driverBufferMinutes` sadece ADMIN/STAFF/OPERATOR'e görünür.
 - **State** (`schemas/state.py`): `state`/`states` (ADMIN, STAFF, OPERATOR), `createState`/`updateState`/`deleteState` (ADMIN, STAFF). `code` büyük/küçük harf duyarsız benzersiz (`ERR038`). `customerImposedHours` artan pozitif saatler, `customerImposedRates` aynı uzunlukta 0–1 arası oranlar (`ERR030`), oranlar string olarak saklanır. Silme şehir ve district'leri de siler, transfer bağlıysa `ERR037`.
 
 ### 4.0.1 Ara duraklar (`Leg`)
@@ -79,6 +82,11 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 - `assignDriver` aynı sorguyla doğrular (`ERR015`). `vehicleId` verilmezse sürücünün uygun ilk aracı atanır (`ERR027`). `PAID` ve `ASSIGNED` iken (yeniden atama) çağrılabilir. Eski sürücüye `TRANSFER_CANCELLED` bildirimi gider.
 - **Dikkat:** liste döndüren `sbd.field`'larda argüman adı `id` olursa strawberry-django onu pk filtresi olarak uygular. Transfer'e bağlı sorgular bu yüzden `transferId` alır.
 
+### 4.2.1 Sürücü ücreti (`driver_name`, `driver_price`, `driver_price_currency`)
+- Opsiyonel `Transfer` alanları. Sadece ADMIN/STAFF/OPERATOR görür (`permissions.json`), diğerlerine `null` döner.
+- `assignDriver`: `driverName` sürücünün adından (`first_name last_name`) set edilir, opsiyonel `driverPrice` (2 ondalığa yuvarlanır, negatifse 0 kaydedilir) ve `driverPriceCurrency` alınır. Yeniden atamada fiyat verilmezse önceki değer kalır.
+- `updateTransfer`: bu üç alanı sadece OPERATOR/ADMIN/STAFF gönderebilir (`ERR001`). Sadece bu alanlar gönderilirse `PENDING`/`ACCEPTED`/`STARTED` iken güncellenir, başka alan da varsa eskisi gibi sadece `PENDING` (`ERR014`). Transferde sürücü atanmışsa `driverName` yok sayılır.
+
 ### 4.3 Ödeme (`core/psp.py`)
 Ödeme mikroservisi (`3rd-party-microservices`) istemcisi. Payload anahtarları ottobus/meetngreet sözleşmesini izler. `PSP_MS_URL`, `MS_ACCESS_TOKEN`, `PSP_STATE` (`.env`). Mikroservis/ağ hatası `ERR031`.
 
@@ -90,7 +98,8 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 | `/refundPayment` | `cancelTransfer` (ödenmişse) ve `refundTransaction` |
 
 - **Webhook `POST /psp-return/`** (`X-Access-Token`): `PAYMENT_RETURN` → transfer koşullu update ile `PENDING → PAID` (tekrar gelen istek bir kez işlenir), `PAYMENT` transaction, müşteriye `PAYMENT_SUCCESS`, operatörlere bildirim + `TRANSFER_PAID`. `TIP_RETURN` → `TIP` transaction, sürücüye bildirim. Başarısızsa `PAYMENT_FAILED` / `TIP_PAYMENT_FAILED`.
-- **Transaction** kategorileri: `PAYMENT`, `TIP`, `REFUND` (`parent` = iade edilen kayıt). `user` her zaman müşteri. Sorgu kapsamı: ADMIN/STAFF hepsi, DRIVER kendi transferlerinin bahşişleri (ve iadeleri), diğerleri kendi kayıtları.
+- **Transaction** kategorileri: `PAYMENT`, `TIP`, `REFUND` (`parent` = iade edilen kayıt). `user` her zaman müşteri. Sorgu kapsamı: ADMIN/STAFF hepsi, OPERATOR operatörü olduğu transferlerinkiler, DRIVER kendi transferlerinin bahşişleri (ve iadeleri), diğerleri kendi kayıtları. Kapsam `utils.get_transactions`'ta. `Transfer.transactions` alanı da aynı kapsamla o transferin kayıtlarını döner (token yoksa boş liste), transfer detayında ayrıca `transactions` sorgusuna gerek yok.
+- **`is_payout_sent`**: sadece OPERATOR/ADMIN/STAFF görür. `updateTransaction(id, note?, isPayoutSent?)` OPERATOR/ADMIN/STAFF, OPERATOR sadece operatörü olduğu transferlerin kayıtlarını görür ve günceller (`ERR034`). `TransactionFilter.isPayoutSent` da sadece bu rollerde, diğerleri kullanırsa `ERR001`.
 - **İade:** `refundTransaction(id, amount?)` ADMIN/STAFF, kısmi veya kalan tutarın tamamı, toplam iade ödemeyi aşamaz (`ERR032`). Bahşiş de iade edilebilir.
 - **İptal cezası:** `CANCEL_PENALTY_RULES` (settings, varsayılan `[]` = her zaman tam iade). Sadece müşterinin iptalinde uygulanır, OPERATOR/ADMIN/STAFF iptali tam iade.
 
@@ -109,7 +118,7 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR039**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR042**.
 
 | Aralık | Alan |
 |---|---|
@@ -120,6 +129,7 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 | ERR030 | Geçersiz parametre |
 | ERR031–ERR034 | Ödeme |
 | ERR036–ERR038 | State |
+| ERR039–ERR041 | City, district (ERR039: city bulunamadı, ERR040/041: kullanımda) |
 
 ## 6. Proje kararları (§15)
 
