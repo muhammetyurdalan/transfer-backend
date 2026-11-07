@@ -228,10 +228,10 @@ def psp_response(path, data):
 
 class GraphQLTestCase(TestCase):
     def setUp(self):
-        def create(email, role='CUSTOMER'):
+        def create(email, role='CUSTOMER', status='ACCEPTED'):
             return User.objects.create(
                 email=email, role=role, first_name=email.split('@')[0],
-                last_name='Test'
+                last_name='Test', status=status
             )
         self.customer = create('customer@example.com')
         self.other_customer = create('other@example.com')
@@ -256,6 +256,10 @@ class GraphQLTestCase(TestCase):
         )
         models.District.objects.create(
             city=athens, name='Closed', is_active=False
+        )
+        # Transfers in these districts go to self.operator
+        self.operator.districts.set(
+            [self.arnavutkoy, self.beyoglu, self.glyfada]
         )
         self.sedan = models.VehicleCategory.objects.create(
             name_en='Sedan', name_tr='Binek', max_passengers=3,
@@ -431,6 +435,7 @@ class UserTests(GraphQLTestCase):
         self.assertEqual(self.ok(result, 'createAdminUser')['role'], 'ADMIN')
 
     async def test_status_visibility_and_update(self):
+        await User.objects.filter(pk=self.driver.id).aupdate(status='PENDING')
         variables = {'id': str(self.driver.id)}
         result = await self.execute(ADMIN_USER, variables, self.operator)
         self.assertIsNone(self.ok(result, 'adminUser')['status'])
@@ -934,6 +939,25 @@ class TransferTests(GraphQLTestCase):
         self.assertEqual(self.error_code(result), 'ERR030')
         self.assertEqual(await models.Transfer.objects.acount(), 2)
 
+    async def test_only_accepted_operators_get_transfers(self):
+        await User.objects.filter(pk=self.operator.id).aupdate(status='PENDING')
+        await self.other_operator.districts.aset([self.beyoglu])
+        created = await self.create_transfer(
+            pickupDistrictName='Beyoglu', dropoffDistrictName='Glyfada'
+        )
+        self.assertEqual(
+            created['transfer']['operatorId'], str(self.other_operator.id)
+        )
+        # Glyfada only has the PENDING operator: not serviceable
+        result = await self.execute(
+            CREATE_TRANSFER,
+            {'data': self.transfer_data(
+                pickupDistrictName='Glyfada', dropoffDistrictName='Glyfada'
+            )},
+            user=self.customer
+        )
+        self.assertEqual(self.error_code(result), 'ERR035')
+
     async def test_create_transfer_sets_districts_and_state(self):
         def ids(transfer):
             keys = ['pickupDistrictId', 'dropoffDistrictId', 'stateId']
@@ -1089,9 +1113,10 @@ class AvailableDriverTests(GraphQLTestCase):
     def setUp(self):
         super().setUp()
 
-        def driver(email, category, **kwargs):
+        def driver(email, category, status='ACCEPTED', **kwargs):
             user = User.objects.create(
-                email=email, role='DRIVER', first_name='D', last_name='T'
+                email=email, role='DRIVER', first_name='D', last_name='T',
+                status=status
             )
             models.Vehicle.objects.create(
                 driver=user, category=category, plate=email[:10],
@@ -1104,6 +1129,10 @@ class AvailableDriverTests(GraphQLTestCase):
         )
         self.inactive_driver = driver('passive@example.com', self.sedan)
         User.objects.filter(pk=self.inactive_driver.pk).update(is_active=False)
+        # Not verified yet: never available
+        self.pending_driver = driver(
+            'pending@example.com', self.sedan, status='PENDING'
+        )
 
     async def available_ids(self, transfer):
         result = await self.execute(

@@ -17,6 +17,7 @@ User = utils.User
 Status = enums.TransferStatus
 Role = enums.Role
 Action = enums.Action
+VerifyStatus = enums.VerifyStatus
 ZERO = models.ZERO
 EDITABLE_STATUSES = [Status.PENDING]
 ASSIGNABLE_STATUSES = [Status.ACCEPTED]
@@ -179,7 +180,8 @@ async def get_district(transfer, data, prefix, require_serviceable=True):
             filters.update({
                 'is_active': True, 
                 'users__role': 'OPERATOR', 
-                'users__is_active': True
+                'users__is_active': True,
+                'users__status': VerifyStatus.ACCEPTED
             })
         return await districts.filter(**filters).distinct().afirst()
     district_id = getattr(transfer, f'{prefix}_district_id')
@@ -203,12 +205,13 @@ async def set_districts(transfer, data):
 
 
 async def set_operator(transfer):
-    """Sets the operator to the first active operator of the transfer's state."""
+    """Sets the first active, ACCEPTED operator of the transfer's districts."""
     assert transfer.state_id, dumps({'code': 'ERR035'})
     district_ids = [transfer.pickup_district_id, transfer.dropoff_district_id]
     operators = User.objects.filter(
         role=Role.OPERATOR,
         is_active=True,
+        status=VerifyStatus.ACCEPTED,
         districts__id__in=district_ids
     ).annotate(
         pickup_district=Count('districts', 

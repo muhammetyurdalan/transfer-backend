@@ -57,6 +57,7 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 ### 4.0 Konum (`State` → `City` → `District`)
 - `createTransfer` adreslerle birlikte `pickupDistrictName` ve `dropoffDistrictName` alır (ikisi de zorunlu). İsimler aktif `District` kayıtlarında büyük/küçük harf duyarsız (`name__iexact`, baştaki/sondaki boşluk atılır) aranır (`schemas/transfer.py` `set_districts`).
 - Bulunanlar `pickup_district_id` / `dropoff_district_id` olarak yazılır, bulunamayan `null` kalır. **İkisi de bulunamazsa `ERR035`.**
+- Bir district ancak aktifse ve ona bağlı aktif, `status=ACCEPTED` bir OPERATOR varsa eşleşir. Transferin operatörü (`set_operator`) bu district'lerin ACCEPTED operatörleri arasından seçilir (önce pickup district'inin, sonra en az `ACCEPTED` transferi olan). PENDING/REJECTED operatöre transfer düşmez.
 - `state_id` = pickup district'in state'i, o yoksa dropoff'unki.
 - `updateTransfer` bu isimlerden birini alırsa yeniden hesaplanır, verilmeyen taraf mevcut district'ini korur.
 - Aynı isimde birden fazla district varsa (ör. "Merkez") ilk eşleşen (alfabetik) alınır. Şehir adı alınmadığı için ayırt edilemez.
@@ -76,7 +77,7 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 - `vehicleOptions(transferId)` aynı listeyi tekrar döner. İsimler kullanıcının dilinde döner. Public `vehicleCategories(language)` sorgusunda dil argümandan alınır.
 
 ### 4.2 Uygun sürücü sorgusu (`core/managers.py`)
-- `User.objects.available_drivers(transfer)`: aktif `DRIVER`, transferin kategorisinde **aktif aracı olan** ve o saatte **başka bir işi olmayan** kullanıcılar.
+- `User.objects.available_drivers(transfer)`: aktif ve `status=ACCEPTED` `DRIVER`, transferin kategorisinde **aktif aracı olan** ve o saatte **başka bir işi olmayan** kullanıcılar.
 - **Meşgul** = `ASSIGNED`/`STARTED` durumundaki başka bir transferi, `[pickup_time - buffer, end_time + buffer]` aralığıyla kesişen sürücü. `end_time = pickup_time + duration` (`Transfer.save`), `buffer = DRIVER_BUFFER_MINUTES` (30). Yani iki iş arasında en az 30 dk olmalı.
 - `Vehicle.objects.available_for(transfer)`: uygun sürücülerin uygun araçları (`availableVehicles`).
 - `assignDriver` aynı sorguyla doğrular (`ERR015`). `vehicleId` verilmezse sürücünün uygun ilk aracı atanır (`ERR027`). `PAID` ve `ASSIGNED` iken (yeniden atama) çağrılabilir. Eski sürücüye `TRANSFER_CANCELLED` bildirimi gider.

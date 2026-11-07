@@ -19,14 +19,16 @@ class UserQuerySet(QuerySet):
 
     def available_drivers(self, transfer):
         """
-        Active drivers who have an active vehicle in the transfer's vehicle
-        category and no other busy transfer overlapping its time window.
+        Active, ACCEPTED (verified) drivers who have an active vehicle in the
+        transfer's vehicle category and no other busy transfer overlapping its
+        time window.
         """
         vehicles = get_model('Vehicle').objects.suitable_for(transfer)
         vehicles = vehicles.filter(driver_id=OuterRef('pk'))
         transfers = get_model('Transfer').objects.overlapping(transfer)
         transfers = transfers.filter(driver_id=OuterRef('pk'))
-        return self.drivers().filter(Exists(vehicles)).exclude(Exists(transfers))
+        drivers = self.drivers().filter(status='ACCEPTED')
+        return drivers.filter(Exists(vehicles)).exclude(Exists(transfers))
 
 
 class UserManager(BaseUserManager.from_queryset(UserQuerySet)):
