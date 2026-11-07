@@ -184,6 +184,7 @@ class VehicleCategory(models.Model):
             + self.per_km_price * Decimal(distance)
             + self.per_minute_price * Decimal(duration)
         )
+        price = Decimal(int(float(price) / 5 + 0.5) * 5)
         return max(price, self.minimum_fare).quantize(ZERO)
 
 
