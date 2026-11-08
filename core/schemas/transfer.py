@@ -27,13 +27,11 @@ STATUS_TRANSITIONS = {
     Status.ACCEPTED: Status.STARTED,
     Status.STARTED: Status.COMPLETED,
 }
-# Fields that change the vehicle options or the price
 ROUTE_FIELDS = [
     'pickup_time', 'distance', 'duration', 'passenger_count',
     'luggage_count', 'child_seat_count', 'needs_wheelchair'
 ]
 DISTRICT_NAME_FIELDS = ['pickup_district_name', 'dropoff_district_name']
-# Set by OPERATOR/ADMIN/STAFF, also after the assignment
 DRIVER_FIELDS = ['driver_name', 'driver_price', 'driver_price_currency']
 DRIVER_EDITABLE_STATUSES = [Status.PENDING, Status.ACCEPTED, Status.STARTED]
 IGNORED_CREATE_FIELDS = [*DISTRICT_NAME_FIELDS, 'legs']
@@ -501,7 +499,7 @@ class Mutation:
             transfer.status = Status.WITHDRAWN
             action = Action.TRANSFER_WITHDRAWN
         else:
-            await psp.refund_cancelled_transfer(transfer, cancel_time)
+            await psp.refund_cancelled_transfer(user, transfer, cancel_time)
             transfer.status = Status.CANCELLED
             action = Action.TRANSFER_CANCELLED
         await transfer.asave()

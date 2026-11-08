@@ -17,8 +17,7 @@ for key, value in field_type_map.items():
         field_type_map[key] = Optional[value]
 
 
-# Roles that see every user's contact details
-AUTHORIZED_ROLES = [enums.Role.ADMIN, enums.Role.STAFF, enums.Role.OPERATOR]
+AUTHORIZED_ROLES = utils.AUTHORIZED_ROLES
 
 
 class IsAuthorized(BasePermission):

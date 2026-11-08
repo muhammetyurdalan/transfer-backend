@@ -19,6 +19,7 @@ User = get_user_model()
 fernet = Fernet(settings.FERNET_KEY)
 channel_layer = get_channel_layer()
 SUBSCRIPTION_TYPE = 'subscription'
+AUTHORIZED_ROLES = [enums.Role.ADMIN, enums.Role.STAFF, enums.Role.OPERATOR]
 
 
 # Input -> Model

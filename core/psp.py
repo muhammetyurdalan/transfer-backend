@@ -58,7 +58,6 @@ async def async_post(path, data):
             response = await client.post(url, headers=get_headers(), json=data)
         response = response.json()
     except (HTTPError, ValueError) as error:
-        # Unreachable or invalid response: no payment service error to keep
         logger.error('PSP %s failed: %r', path, error)
         raise PSPError('ERR031')
     if response.get('success'):
@@ -202,7 +201,6 @@ async def process_tip_return(data):
     amount = Decimal(transfer.psp_data['tip_amount'])
     for key in TIP_KEYS:
         transfer.psp_data.pop(key, None)
-    # Conditional update: a repeated return finds tip_amount removed
     tip_pending = transfers.filter(psp_data__has_key='tip_amount')
     updated = await tip_pending.aupdate(psp_data=transfer.psp_data)
     if not updated:
@@ -254,15 +252,6 @@ async def process_psp_return(request):
 
 
 # Refund
-#
-# Every refund runs in a DB transaction holding a row lock
-# (select_for_update of='self', only the transaction row: the nullable
-# parent join cannot be locked in PostgreSQL): on the parent PAYMENT/TIP for
-# a new refund, on the refund itself for a retry. Concurrent requests wait
-# for the lock and then see the committed refunds, so the same amount is
-# never refunded twice.
-# The refund row is created PENDING before /refundPayment and committed even
-# if the payment service fails, it becomes COMPLETED on success.
 
 def get_refunded_amount(transaction):
     """PENDING refunds count too, they reserve their amount for the retry."""
@@ -387,7 +376,7 @@ def get_penalty_rate(transfer, cancel_time, waive_penalty=False):
     return penalty_rate
 
 
-async def refund_cancelled_transfer(transfer, cancel_time):
+async def refund_cancelled_transfer(user, transfer, cancel_time):
     """
     Refunds the transfer payment except the penalty share, if paid. A failed
     refund stays PENDING, the cancellation still goes through.
@@ -396,7 +385,8 @@ async def refund_cancelled_transfer(transfer, cancel_time):
     payment = await payments.afirst()
     if not payment:
         return None
-    penalty_rate = get_penalty_rate(transfer, cancel_time)
+    waive_penalty = user.role != enums.Role.CUSTOMER
+    penalty_rate = get_penalty_rate(transfer, cancel_time, waive_penalty)
     kept = (payment.order_amount * penalty_rate).quantize(ZERO)
     args = (payment.id, None, 'CANCELLED', kept)
     refund, _ = await create_refund(*args)
