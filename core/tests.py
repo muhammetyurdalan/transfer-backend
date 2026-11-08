@@ -556,15 +556,16 @@ class DriverPriceTests(GraphQLTestCase):
         )
         self.assertEqual(self.error_code(result), 'ERR014')
 
-    async def test_driver_fields_hidden_from_customer(self):
+    async def test_driver_price_hidden_from_customer(self):
         transfer = await self.orm_transfer(
             driver_name='Ali', driver_price='100', driver_price_currency='TRY'
         )
         variables = {'id': str(transfer.id)}
         result = await self.execute(TRANSFER_DRIVER, variables, self.customer)
+        # The customer sees the driver name, never the driver's price
         self.assertEqual(
             self.ok(result, 'transfer'),
-            {'id': str(transfer.id), 'driverName': None, 'driverPrice': None,
+            {'id': str(transfer.id), 'driverName': 'Ali', 'driverPrice': None,
              'driverPriceCurrency': None}
         )
         result = await self.execute(TRANSFER_DRIVER, variables, self.operator)

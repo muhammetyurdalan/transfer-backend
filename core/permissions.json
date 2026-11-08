@@ -3,7 +3,8 @@
         "driver_name": [
             "ADMIN",
             "STAFF",
-            "OPERATOR"
+            "OPERATOR",
+            "CUSTOMER"
         ],
         "driver_price": [
             "ADMIN",

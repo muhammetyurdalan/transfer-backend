@@ -85,7 +85,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - **Dikkat:** liste döndüren `sbd.field`'larda argüman adı `id` olursa strawberry-django onu pk filtresi olarak uygular. Transfer'e bağlı sorgular bu yüzden `transferId` alır.
 
 ### 4.2.1 Sürücü ücreti (`driver_name`, `driver_price`, `driver_price_currency`)
-- Opsiyonel `Transfer` alanları. Sadece ADMIN/STAFF/OPERATOR görür (`permissions.json`), diğerlerine `null` döner.
+- Opsiyonel `Transfer` alanları. `driverPrice`/`driverPriceCurrency` sadece ADMIN/STAFF/OPERATOR görür, `driverName`'i ayrıca CUSTOMER da görür (`permissions.json`). Diğerlerine `null` döner (DRIVER `driverName`'i de göremez).
 - `assignDriver`: `driverName` sürücünün adından (`first_name last_name`) set edilir, opsiyonel `driverPrice` (2 ondalığa yuvarlanır, negatifse 0 kaydedilir) ve `driverPriceCurrency` alınır. Yeniden atamada fiyat verilmezse önceki değer kalır.
 - `updateTransfer`: bu üç alanı sadece OPERATOR/ADMIN/STAFF gönderebilir (`ERR001`). Sadece bu alanlar gönderilirse `PENDING`/`ACCEPTED`/`STARTED` iken güncellenir, başka alan da varsa eskisi gibi sadece `PENDING` (`ERR014`). Transferde sürücü atanmışsa `driverName` yok sayılır.
 
