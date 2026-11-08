@@ -5,7 +5,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from datetime import timedelta
 from django.apps import apps
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import DecimalField, OuterRef, Q, Subquery, Sum
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.translation import activate, gettext
@@ -171,9 +171,19 @@ def get_transactions(user):
     ADMIN/STAFF: all. OPERATOR: transactions of the transfers they operate.
     DRIVER: tips (and their refunds) of own transfers.
     Others: own payments, tips and refunds.
+    completed_refund_amount is annotated for Transaction.refunded_amount
+    (one query for the whole list instead of one per row).
     '''
     Category = enums.TransactionCategory
-    transactions = models.Transaction.objects.all()
+    completed_refunds = models.Transaction.objects.filter(
+        parent=OuterRef('pk'), status=enums.TransactionStatus.COMPLETED
+    ).order_by().values('parent').annotate(total=Sum('order_amount'))
+    transactions = models.Transaction.objects.annotate(
+        completed_refund_amount=Subquery(
+            completed_refunds.values('total'),
+            output_field=DecimalField(**models.DECIMAL_10)
+        )
+    )
     if user.role in STAFF_ROLES:
         return transactions
     if user.role == enums.Role.OPERATOR:

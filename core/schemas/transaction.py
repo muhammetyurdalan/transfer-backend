@@ -63,6 +63,23 @@ class Mutation:
         note = data.note or ''
         return await psp.refund_transaction(transaction, amount, note)
 
+    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
+    async def retry_refund(
+        root, info: Info,
+        id: sb.ID
+    ) -> outputs.Transaction:
+        """
+        Resends a PENDING refund (the payment service failed before).
+        Scoped like the transactions query: CUSTOMER own refunds, OPERATOR
+        refunds of the transfers they operate. Still PENDING if it fails again.
+        """
+        user = info.context['user']
+        refunds = get_transactions(user).filter(category=Category.REFUND)
+        refund = await refunds.filter(pk=id).afirst()
+        assert refund, dumps({'code': 'ERR034'})
+        return await psp.retry_refund(refund)
+
     @sb.mutation(description='OPERATOR, ADMIN, STAFF')
     @permission_required('OPERATOR', 'ADMIN', 'STAFF')
     async def update_transaction(

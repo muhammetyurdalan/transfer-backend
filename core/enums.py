@@ -56,6 +56,13 @@ class TransferStatus(TextChoices):
 
 
 @enum
+class TransactionStatus(TextChoices):
+    PENDING = 'PENDING'
+    FAILED = 'FAILED'
+    COMPLETED = 'COMPLETED'
+
+
+@enum
 class TransactionCategory(TextChoices):
     PAYMENT = 'PAYMENT'
     TIP = 'TIP'

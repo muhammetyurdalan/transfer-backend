@@ -363,6 +363,11 @@ class Transaction(models.Model):
         max_length=10,
         choices=enums.TransactionCategory.choices
     )
+    status = models.CharField(
+        max_length=10,
+        choices=enums.TransactionStatus.choices,
+        default=enums.TransactionStatus.PENDING
+    )
     parent = models.ForeignKey(
         'self',
         related_name='refunds',
@@ -375,6 +380,7 @@ class Transaction(models.Model):
     order_time = models.DateTimeField()
     note = models.TextField(blank=True)
     is_payout_sent = models.BooleanField(default=False)
+    error_code = models.CharField(max_length=50, blank=True)
 
     class Meta:
         ordering = ['-order_time', '-id']

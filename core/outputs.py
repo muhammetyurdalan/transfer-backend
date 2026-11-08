@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Q, Sum
 import strawberry as sb
 import strawberry_django as sbd
 from datetime import datetime
@@ -380,6 +380,15 @@ class Transfer:
             return []
         transactions = utils.get_transactions(user).filter(transfer_id=self.id)
         return [transaction async for transaction in transactions]
+    
+    @sbd.field(
+        only=['driver_id', 'driver_name'],
+        description='True if the transfer has a external driver.'
+    )
+    async def is_driver_external(self, info: Info) -> bool:
+        if not self.driver_id and bool((self.driver_name or '').strip()):
+            return True
+        return False
 
 
 @sb.type
@@ -420,6 +429,9 @@ class TransactionFilter:
     category: Optional[
         sbd.BaseFilterLookup[enums.TransactionCategory]
     ] = sb.UNSET
+    status: Optional[
+        sbd.BaseFilterLookup[enums.TransactionStatus]
+    ] = sb.UNSET
     order_time: Optional[sbd.DatetimeFilterLookup] = sb.UNSET
     is_payout_sent: Optional[bool] = sb.field(
         default=sb.UNSET, description='OPERATOR, ADMIN, STAFF'
@@ -441,7 +453,28 @@ class Transaction:
     transfer: Optional[Transfer]
     user: Optional[User]
     category: Optional[enums.TransactionCategory]
+    status: Optional[enums.TransactionStatus]
     currency: Optional[enums.Currency]
+
+    @sbd.field(
+        # The optimizer defers unrequested fields, category must be loaded
+        only=['category'],
+        description='PAYMENT/TIP: total of COMPLETED refunds, null for REFUND'
+    )
+    async def refunded_amount(self, info: Info) -> Optional[Decimal]:
+        refundable = (
+            enums.TransactionCategory.PAYMENT, enums.TransactionCategory.TIP
+        )
+        if self.category not in refundable:
+            return None
+        if hasattr(self, 'completed_refund_amount'):
+            total = self.completed_refund_amount
+        else:
+            completed = enums.TransactionStatus.COMPLETED
+            refunds = self.refunds.filter(status=completed)
+            aggregate = await refunds.aaggregate(total=Sum('order_amount'))
+            total = aggregate['total']
+        return (total or models.ZERO).quantize(models.ZERO)
 
 
 @sb.type

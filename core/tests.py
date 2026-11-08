@@ -10,8 +10,8 @@ from json import dumps, loads
 from strawberry.channels.testing import GraphQLWebsocketCommunicator
 from strawberry.exceptions import StrawberryGraphQLError as Error
 from unittest.mock import AsyncMock, Mock, patch
-from core import models, tasks, utils
-from core.psp import async_post as real_async_post
+from core import models, outputs, tasks, utils
+from core.psp import PSPError, async_post as real_async_post
 from transfer.asgi import application
 
 
@@ -138,8 +138,11 @@ TRANSACTIONS = '''
 '''
 REFUND_TRANSACTION = '''
 mutation($data: RefundTransaction!) {
-  refundTransaction(data: $data) { id category orderAmount parentId }
+  refundTransaction(data: $data) { id category orderAmount parentId status }
 }
+'''
+RETRY_REFUND = '''
+mutation($id: ID!) { retryRefund(id: $id) { id status orderAmount } }
 '''
 SEND_MESSAGE = '''
 mutation($data: SendMessage!) {
@@ -1388,10 +1391,130 @@ class PaymentTests(GraphQLTestCase):
             with self.assertRaises(Error) as context:
                 await real_async_post('/createPaymentLink', {})
         self.assertEqual(loads(context.exception.message)['code'], 'ERR031')
+        self.assertEqual(context.exception.error_code, 'down')
         url = post.call_args.args[0]
         self.assertEqual(url, 'https://psp.test/createPaymentLink')
         headers = post.call_args.kwargs['headers']
         self.assertEqual(headers['X-Access-Token'], 'test-ms-access-token')
+
+
+class RefundTests(GraphQLTestCase):
+    def fail_refunds(self):
+        def response(path, data):
+            if path == '/refundPayment':
+                raise PSPError('insufficient_balance')
+            return psp_response(path, data)
+        self.async_post.side_effect = response
+
+    async def test_payment_is_completed(self):
+        transfer = await self.paid_transfer()
+        payment = await models.Transaction.objects.aget(transfer=transfer)
+        self.assertEqual(payment.status, 'COMPLETED')
+
+    async def test_successful_refund_is_completed(self):
+        transfer = await self.paid_transfer()
+        payment = await models.Transaction.objects.aget(transfer=transfer)
+        data = {'id': str(payment.id), 'amount': '100'}
+        result = await self.execute(REFUND_TRANSACTION, {'data': data}, self.admin)
+        self.assertEqual(self.ok(result, 'refundTransaction')['status'], 'COMPLETED')
+        refund = await models.Transaction.objects.aget(category='REFUND')
+        result = await self.execute(RETRY_REFUND, {'id': str(refund.id)}, self.admin)
+        self.assertEqual(self.error_code(result), 'ERR042')
+
+    async def test_failed_refund_stays_pending_and_can_be_retried(self):
+        transfer = await self.paid_transfer()
+        self.fail_refunds()
+        result = await self.execute(
+            CANCEL_TRANSFER, {'id': str(transfer.id)}, self.customer
+        )
+        # The cancellation goes through, the refund waits as PENDING
+        self.assertEqual(self.ok(result, 'cancelTransfer')['status'], 'CANCELLED')
+        refund = await models.Transaction.objects.aget(category='REFUND')
+        self.assertEqual(refund.status, 'PENDING')
+        # The payment service's error is kept on the refund
+        self.assertEqual(refund.error_code, 'insufficient_balance')
+        self.assertFalse(await models.Notification.objects.filter(
+            action='REFUND'
+        ).aexists())
+        # The PENDING amount is reserved: no second refund on top of it
+        payment = await models.Transaction.objects.aget(category='PAYMENT')
+        data = {'id': str(payment.id)}
+        result = await self.execute(REFUND_TRANSACTION, {'data': data}, self.admin)
+        self.assertEqual(self.error_code(result), 'ERR032')
+        variables = {'id': str(refund.id)}
+        # Still failing: stays PENDING
+        result = await self.execute(RETRY_REFUND, variables, self.customer)
+        self.assertEqual(self.ok(result, 'retryRefund')['status'], 'PENDING')
+        # Only the customer of the transfer (and staff) can retry
+        result = await self.execute(RETRY_REFUND, variables, self.other_customer)
+        self.assertEqual(self.error_code(result), 'ERR034')
+        result = await self.execute(RETRY_REFUND, variables, self.driver)
+        self.assertEqual(self.error_code(result), 'ERR001')
+        self.async_post.side_effect = psp_response
+        result = await self.execute(RETRY_REFUND, variables, self.customer)
+        self.assertEqual(self.ok(result, 'retryRefund')['status'], 'COMPLETED')
+        refund = await models.Transaction.objects.aget(category='REFUND')
+        self.assertEqual(refund.order_id, 'refund_1')
+        self.assertEqual(refund.error_code, '')
+        self.assertEqual(await models.Notification.objects.filter(
+            action='REFUND'
+        ).acount(), 1)
+        # A repeated retry does not refund twice
+        result = await self.execute(RETRY_REFUND, variables, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR042')
+        refund_calls = self.psp_paths().count('/refundPayment')
+        self.assertEqual(refund_calls, 3)
+
+    async def refunded_amounts(self):
+        # category is not requested: refundedAmount must load it itself
+        query = '{ transactions { transactions { id refundedAmount } } }'
+        result = await self.execute(query, user=self.admin)
+        rows = self.ok(result, 'transactions')['transactions']
+        return {row['id']: row['refundedAmount'] for row in rows}
+
+    async def test_refunded_amount_counts_completed_refunds(self):
+        transfer = await self.paid_transfer()
+        payment = await models.Transaction.objects.aget(transfer=transfer)
+        pid = str(payment.id)
+        self.assertEqual(await self.refunded_amounts(), {pid: '0.00'})
+        self.fail_refunds()
+        data = {'id': pid, 'amount': '10'}
+        await self.execute(REFUND_TRANSACTION, {'data': data}, self.admin)
+        refund = await models.Transaction.objects.aget(category='REFUND')
+        rid = str(refund.id)
+        # A failed (PENDING) refund returned no money
+        self.assertEqual(
+            await self.refunded_amounts(), {pid: '0.00', rid: None}
+        )
+        self.async_post.side_effect = psp_response
+        await self.execute(RETRY_REFUND, {'id': rid}, self.admin)
+        data['amount'] = '5.50'
+        await self.execute(REFUND_TRANSACTION, {'data': data}, self.admin)
+        amounts = await self.refunded_amounts()
+        self.assertEqual(amounts[pid], '15.50')
+        self.assertIsNone(amounts[rid])
+        # Without the get_transactions annotation the field queries itself
+        payment = await models.Transaction.objects.aget(pk=pid)
+        field = outputs.Transaction.refunded_amount
+        total = await field.base_resolver(payment, None)
+        self.assertEqual(total, Decimal('15.50'))
+
+    async def test_concurrent_refunds_do_not_duplicate(self):
+        transfer = await self.paid_transfer()
+        payment = await models.Transaction.objects.aget(transfer=transfer)
+        data = {'id': str(payment.id)}
+        results = await asyncio.gather(*[
+            self.execute(REFUND_TRANSACTION, {'data': data}, self.admin)
+            for _ in range(3)
+        ])
+        succeeded = [r for r in results if 'errors' not in r]
+        self.assertEqual(len(succeeded), 1)
+        self.assertTrue(all(
+            self.error_code(r) == 'ERR032' for r in results if 'errors' in r
+        ))
+        self.assertEqual(await models.Transaction.objects.filter(
+            category='REFUND'
+        ).acount(), 1)
 
 
 class ExpiringTests(GraphQLTestCase):

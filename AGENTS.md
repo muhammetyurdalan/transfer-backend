@@ -90,7 +90,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - `updateTransfer`: bu üç alanı sadece OPERATOR/ADMIN/STAFF gönderebilir (`ERR001`). Sadece bu alanlar gönderilirse `PENDING`/`ACCEPTED`/`STARTED` iken güncellenir, başka alan da varsa eskisi gibi sadece `PENDING` (`ERR014`). Transferde sürücü atanmışsa `driverName` yok sayılır.
 
 ### 4.3 Ödeme (`core/psp.py`)
-Ödeme mikroservisi (`3rd-party-microservices`) istemcisi. Payload anahtarları ottobus/meetngreet sözleşmesini izler. `PSP_MS_URL`, `MS_ACCESS_TOKEN`, `PSP_STATE` (`.env`). Mikroservis/ağ hatası `ERR031`.
+Ödeme mikroservisi (`3rd-party-microservices`) istemcisi. Payload anahtarları ottobus/meetngreet sözleşmesini izler. `PSP_MS_URL`, `MS_ACCESS_TOKEN`, `PSP_STATE` (`.env`). Mikroservis/ağ hatası istemciye `ERR031` döner (`psp.PSPError`), mikroservisin kendi hatası `error_code` özelliğinde taşınır (ağ hatasında `ERR031`).
 
 | İstek | Ne zaman |
 |---|---|
@@ -102,7 +102,11 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - **Webhook `POST /psp-return/`** (`X-Access-Token`): `PAYMENT_RETURN` → transfer koşullu update ile `PENDING → PAID` (tekrar gelen istek bir kez işlenir), `PAYMENT` transaction, müşteriye `PAYMENT_SUCCESS`, operatörlere bildirim + `TRANSFER_PAID`. `TIP_RETURN` → `TIP` transaction, sürücüye bildirim. Başarısızsa `PAYMENT_FAILED` / `TIP_PAYMENT_FAILED`.
 - **Transaction** kategorileri: `PAYMENT`, `TIP`, `REFUND` (`parent` = iade edilen kayıt). `user` her zaman müşteri. Sorgu kapsamı: ADMIN/STAFF hepsi, OPERATOR operatörü olduğu transferlerinkiler, DRIVER kendi transferlerinin bahşişleri (ve iadeleri), diğerleri kendi kayıtları. Kapsam `utils.get_transactions`'ta. `Transfer.transactions` alanı da aynı kapsamla o transferin kayıtlarını döner (token yoksa boş liste), transfer detayında ayrıca `transactions` sorgusuna gerek yok.
 - **`is_payout_sent`**: sadece OPERATOR/ADMIN/STAFF görür. `updateTransaction(id, note?, isPayoutSent?)` OPERATOR/ADMIN/STAFF, OPERATOR sadece operatörü olduğu transferlerin kayıtlarını görür ve günceller (`ERR034`). `TransactionFilter.isPayoutSent` da sadece bu rollerde, diğerleri kullanırsa `ERR001`.
+- **`Transaction.status`** (`TransactionStatus`: `PENDING` varsayılan, `FAILED`, `COMPLETED`; `FAILED`'ı şu an hiçbir akış set etmiyor): `PAYMENT`/`TIP` mikroservis başarıyı bildirdiğinde `COMPLETED` olarak oluşur. `REFUND` önce `PENDING` kaydedilir, `/refundPayment` başarılıysa `COMPLETED` olur.
 - **İade:** `refundTransaction(id, amount?)` ADMIN/STAFF, kısmi veya kalan tutarın tamamı, toplam iade ödemeyi aşamaz (`ERR032`). Bahşiş de iade edilebilir.
+  - **Kilit:** her iade bir DB transaction'ında satır kilidiyle yapılır (`select_for_update`, `psp.create_refund`/`resend_refund`): yeni iadede ödeme (parent) satırı, tekrar denemede iade satırı kilitlenir. Aynı anda gelen istekler kilidi bekler ve işlenmiş iadeyi görür, aynı tutar iki kez iade edilmez. Kilit `/refundPayment` isteği boyunca tutulur. SQLite'ta (testler) `select_for_update` etkisizdir, kilit PostgreSQL'de çalışır.
+  - **Başarısız iade:** mikroservis hata verirse iade `PENDING` olarak kalır, mikroservisin hatası `Transaction.error_code`'a yazılır (dict ise `code`/`message`, en fazla 50 karakter; ulaşılamazsa `ERR031`), başarılı tekrar denemede temizlenir (hata dönmez, kayıt döner), müşteriye `REFUND` bildirimi sadece `COMPLETED` olunca gider. `PENDING` iadeler iade edilebilir tutardan düşülür, yani üstüne yeni iade açılamaz, tekrar denenmelidir. `cancelTransfer`'da iade başarısız olsa da transfer `CANCELLED` olur.
+  - **`retryRefund(id)`** (CUSTOMER, OPERATOR, ADMIN, STAFF; kapsam `transactions` sorgusu gibi, bulunamazsa `ERR034`): `PENDING` veya `FAILED` iadeyi aynı kayıtla tekrar gönderir. `COMPLETED` iade için `ERR042`.
 - **İptal cezası:** `CANCEL_PENALTY_RULES` (settings, varsayılan `[]` = her zaman tam iade). Sadece müşterinin iptalinde uygulanır, OPERATOR/ADMIN/STAFF iptali tam iade.
 
 ### 4.4 Mesajlaşma (`schemas/message.py`)
@@ -125,7 +129,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR042**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR043**.
 
 | Aralık | Alan |
 |---|---|
@@ -134,7 +138,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 | ERR017–ERR024 | Mesajlaşma |
 | ERR025–ERR029 | Araç kategorisi, araç |
 | ERR030 | Geçersiz parametre |
-| ERR031–ERR034 | Ödeme |
+| ERR031–ERR034, ERR042 | Ödeme (ERR042: iade zaten tamamlandı) |
 | ERR036–ERR038 | State |
 | ERR039–ERR041 | City, district (ERR039: city bulunamadı, ERR040/041: kullanımda) |
 
