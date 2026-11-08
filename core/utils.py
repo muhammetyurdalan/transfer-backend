@@ -143,13 +143,13 @@ def get_receiver_ids(sender_id, transfer):
 
 
 def check_messaging_access(user, transfer):
-    """ADMIN/STAFF can join every transfer's messaging."""
+    '''ADMIN/STAFF can join every transfer's messaging.'''
     if user.role not in STAFF_ROLES:
         check_participant(user, transfer)
 
 
 async def get_messaging_receiver_ids(sender_id, transfer):
-    """Participants and all active ADMIN/STAFF users, except the sender."""
+    '''Participants and all active ADMIN/STAFF users, except the sender.'''
     staff = User.objects.filter(role__in=STAFF_ROLES, is_active=True)
     staff_ids = {user_id async for user_id in staff.values_list('id', flat=True)}
     return (get_participant_ids(transfer) | staff_ids) - {sender_id}
@@ -167,11 +167,11 @@ def get_transfers(user, expand=()):
 
 
 def get_transactions(user):
-    """
+    '''
     ADMIN/STAFF: all. OPERATOR: transactions of the transfers they operate.
     DRIVER: tips (and their refunds) of own transfers.
     Others: own payments, tips and refunds.
-    """
+    '''
     Category = enums.TransactionCategory
     transactions = models.Transaction.objects.all()
     if user.role in STAFF_ROLES:
@@ -247,7 +247,7 @@ async def notify_users(
     transfer,
     sender_id=None
 ):
-    """Notification in each receiver's language, title/body are gettext_noop."""
+    '''Notification in each receiver's language, title/body are gettext_noop.'''
     receivers = User.objects.filter(id__in=receiver_ids, is_active=True)
     async for receiver in receivers.only('id', 'language'):
         activate(receiver.language)
@@ -288,3 +288,19 @@ def decode_secret(secret):
     except ExpiredSignatureError:
         raise Error(dumps({'code': 'ERR009'}))
     return data
+
+
+def uppercase(text: str, lang: str = 'en') -> str:
+    TR_UPPER = str.maketrans({'i': 'İ', 'ı': 'I'})
+    if lang.lower().startswith('tr'):
+        text = text.translate(TR_UPPER)
+    return text.upper()
+
+
+def get_district_filters(district_name):
+    filters = Q()
+    district_name = district_name.strip()
+    for lang in settings.LANGUAGES:
+        name = uppercase(district_name, lang[0])
+        filters |= Q(name__iexact=name)
+    return filters

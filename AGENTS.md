@@ -52,6 +52,7 @@ availableDrivers / availableVehicles ──► assignDriver ──► ASSIGNED (
    │                                        sürücüye ve müşteriye TRANSFER_ASSIGNED
 updateTransferStatus ──► STARTED ──► COMPLETED ──► tipDriver ──► /createTipLink ──► TIP_RETURN
 cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, değilse /expirePaymentLink
+her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIRED + /expirePaymentLink
 ```
 
 ### 4.0 Konum (`State` → `City` → `District`)
@@ -114,6 +115,11 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 - `utils.notify_users` her alıcının dilinde bildirim üretir (`gettext_noop` metinleri, `locale/` henüz yok).
 - Cihaz: `updateFcmToken(registrationId, type)`, `deleteFcmToken(registrationId)`. `deleteUser` cihazları siler.
 
+### 4.5.1 Periyodik işler (`core/tasks.py`, celery beat)
+- `CELERY_BEAT_SCHEDULE` (`settings/base.py`): `run_hourly_tasks` her saat başı (`crontab(minute=0)`). Çalışması için `celery -A transfer worker` yanında `celery -A transfer beat` gerekir.
+- `run_hourly_tasks` şimdilik sadece `check_transfers_expiring`'i çağırır, yeni saatlik işler buraya eklenir.
+- `check_transfers_expiring`: `pickup_time`'ı geçmiş **sadece `PENDING`** (ödenmemiş) transferler `EXPIRED` olur, ödeme linki `/expirePaymentLink` ile kapatılır. Koşullu update ile yapılır, aynı anda gelen ödeme kazanır. `ACCEPTED`/`STARTED` transferlere dokunulmaz (kullanıcı kararı, ödenmiş transfer otomatik expire/iade edilmez). Bildirim gönderilmez.
+
 ### 4.6 WebSocket olayları (`subscribe`, `SubscriptionResponse`)
 `USER_UPDATED`, `USER_DEACTIVATED`, `NOTIFICATION`, `MESSAGE`, `UPDATE_MESSAGE`, `DELETE_MESSAGE`, `PAYMENT_SUCCESS`, `PAYMENT_FAILED`, `TIP_PAYMENT_SUCCESS`, `TIP_PAYMENT_FAILED`, `REFUND` (sadece bildirim), `TRANSFER_PAID`, `TRANSFER_ASSIGNED`, `TRANSFER_STATUS_UPDATED`, `TRANSFER_CANCELLED`. Transfer olaylarında `transferId` dolu.
 
@@ -155,6 +161,6 @@ cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, de�
 | Sürücü ödeme hesabı | `User.psp_data` (bahşiş için `provider`) dolduran bir akış (`/createUpdateAccount`) yok |
 | İptal edilmiş transfer için gelen başarılı ödeme | Sadece loglanıyor, otomatik iade yok |
 | Eşzamanlı atama | `assignDriver` kontrol + kayıt arasında kilit yok, iki operatör aynı anda aynı sürücüyü çakışan transferlere atayabilir |
-| Ödeme linki süresi dolmuş PENDING transferler | Temizleyen bir Celery beat işi yok |
+| Alış saati geçmiş ödenmiş (`ACCEPTED`) transferler | Otomatik işlem yok, `check_transfers_expiring` sadece `PENDING`'i expire eder |
 | Çeviriler | `locale/` yok, bildirim metinleri her dilde İngilizce |
 | District eşleştirme | Sadece isimle, şehir olmadan. Aynı isimli district'lerde yanlış eşleşme olabilir. PostgreSQL'de Türkçe `İ/ı` harfleri `iexact` ile her zaman eşleşmeyebilir |

@@ -52,6 +52,7 @@ class TransferStatus(TextChoices):
     COMPLETED = 'COMPLETED'
     CANCELLED = 'CANCELLED'
     WITHDRAWN = 'WITHDRAWN'
+    EXPIRED = 'EXPIRED'
 
 
 @enum

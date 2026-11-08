@@ -1,3 +1,4 @@
+from celery.schedules import crontab
 from dotenv import load_dotenv
 from os import environ
 from pathlib import Path
@@ -130,6 +131,12 @@ MS_ACCESS_TOKEN = env('MS_ACCESS_TOKEN', '')
 
 CELERY_BROKER_URL = env('CELERY_BROKER_URL', 'redis://localhost:6379/1')
 CELERY_TASK_ALWAYS_EAGER = False
+CELERY_BEAT_SCHEDULE = {
+    'hourly-tasks': {
+        'task': 'core.tasks.run_hourly_tasks',
+        'schedule': crontab(minute=0),
+    },
+}
 
 
 # Email

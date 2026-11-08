@@ -2,9 +2,16 @@ from asgiref.sync import async_to_sync as a2s
 from celery import shared_task
 from django.conf import settings
 from django.core.mail import send_mail
+from django.utils import timezone
 from fcm_django.models import FCMDevice
 from firebase_admin.messaging import Message, Notification
-from core import utils
+from logging import getLogger
+from strawberry.exceptions import StrawberryGraphQLError as Error
+from core import enums, models, psp, utils
+
+
+logger = getLogger(__name__)
+Status = enums.TransferStatus
 
 
 @shared_task
@@ -34,3 +41,40 @@ def send_push(receiver_ids, title, body, data=None):
     )
     response = devices.send_message(message)
     return response.response.success_count
+
+
+# Periodic (celery beat, CELERY_BEAT_SCHEDULE)
+
+@shared_task
+def run_hourly_tasks():
+    return {'expired_transfers': a2s(check_transfers_expiring)()}
+
+
+async def check_transfers_expiring():
+    """
+    PENDING (unpaid) transfers whose pickup time has passed become EXPIRED
+    and their payment links are expired. Returns the expired transfer ids.
+    """
+    transfers = models.Transfer.objects.filter(
+        status=Status.PENDING, pickup_time__lte=timezone.now()
+    )
+    expired_ids = []
+    async for transfer in transfers.only('id', 'psp_data'):
+        # Conditional update: a payment arriving meanwhile wins
+        pending = models.Transfer.objects.filter(
+            pk=transfer.pk, status=Status.PENDING
+        )
+        if not await pending.aupdate(status=Status.EXPIRED):
+            continue
+        expired_ids.append(transfer.pk)
+        try:
+            await psp.expire_payment_link(transfer)
+        except Error:
+            # Logged by psp, the link expires on its own anyway
+            continue
+        await models.Transfer.objects.filter(pk=transfer.pk).aupdate(
+            psp_data=transfer.psp_data
+        )
+    if expired_ids:
+        logger.info('Expired transfers: %s', expired_ids)
+    return expired_ids

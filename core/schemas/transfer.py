@@ -113,6 +113,7 @@ class Query:
     ) -> outputs.SuccessResponse:
         pickup = await get_district(None, data, 'pickup')
         dropoff = await get_district(None, data, 'dropoff')
+        print(f"pickup: {pickup}, dropoff: {dropoff}")  # Debugging line
         return outputs.SuccessResponse(success=bool(pickup or dropoff))
 
     @sbd.field(description='OPERATOR, ADMIN, STAFF')
@@ -175,15 +176,15 @@ async def get_district(transfer, data, prefix, require_serviceable=True):
     districts = models.District.objects.values('id', 'city__state_id')
     district_name = getattr(data, f'{prefix}_district_name')
     if district_name:
-        filters = {'name__iexact': district_name.strip()}
+        filters = utils.get_district_filters(district_name)
         if require_serviceable:
-            filters.update({
+            filters &= Q(**{
                 'is_active': True, 
                 'users__role': 'OPERATOR', 
                 'users__is_active': True,
                 'users__status': VerifyStatus.ACCEPTED
             })
-        return await districts.filter(**filters).distinct().afirst()
+        return await districts.filter(filters).distinct().afirst()
     district_id = getattr(transfer, f'{prefix}_district_id')
     if district_id:
         return await districts.filter(pk=district_id).afirst()

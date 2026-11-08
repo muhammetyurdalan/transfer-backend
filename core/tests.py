@@ -10,7 +10,7 @@ from json import dumps, loads
 from strawberry.channels.testing import GraphQLWebsocketCommunicator
 from strawberry.exceptions import StrawberryGraphQLError as Error
 from unittest.mock import AsyncMock, Mock, patch
-from core import models, utils
+from core import models, tasks, utils
 from core.psp import async_post as real_async_post
 from transfer.asgi import application
 
@@ -1391,6 +1391,45 @@ class PaymentTests(GraphQLTestCase):
         self.assertEqual(url, 'https://psp.test/createPaymentLink')
         headers = post.call_args.kwargs['headers']
         self.assertEqual(headers['X-Access-Token'], 'test-ms-access-token')
+
+
+class ExpiringTests(GraphQLTestCase):
+    async def pending_transfer(self, hours_ago):
+        created = await self.create_transfer()
+        transfer_id = created['transfer']['id']
+        data = {'id': transfer_id, 'vehicleCategoryId': str(self.sedan.id)}
+        await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
+        pickup = timezone.now() - timedelta(hours=hours_ago)
+        transfers = models.Transfer.objects.filter(pk=transfer_id)
+        await transfers.aupdate(pickup_time=pickup)
+        return int(transfer_id)
+
+    async def test_past_pending_transfers_expire(self):
+        past = await self.pending_transfer(hours_ago=1)
+        future = await self.pending_transfer(hours_ago=-5)
+        paid = await self.paid_transfer()
+        await models.Transfer.objects.filter(pk=paid.pk).aupdate(
+            pickup_time=timezone.now() - timedelta(hours=1)
+        )
+        self.assertEqual(await tasks.check_transfers_expiring(), [past])
+        statuses = {
+            t.id: t.status async for t in models.Transfer.objects.all()
+        }
+        self.assertEqual(statuses[past], 'EXPIRED')
+        self.assertEqual(statuses[future], 'PENDING')
+        # Paid transfers are never expired
+        self.assertEqual(statuses[paid.pk], 'ACCEPTED')
+        self.assertEqual(self.psp_paths()[-1], '/expirePaymentLink')
+        # Already expired ones are skipped on the next run
+        self.assertEqual(await tasks.check_transfers_expiring(), [])
+
+    def test_hourly_schedule(self):
+        from django.conf import settings
+        entry = settings.CELERY_BEAT_SCHEDULE['hourly-tasks']
+        self.assertEqual(entry['task'], 'core.tasks.run_hourly_tasks')
+        self.assertEqual(tasks.run_hourly_tasks.delay().get(), {
+            'expired_transfers': []
+        })
 
 
 class MessageTests(GraphQLTestCase):
