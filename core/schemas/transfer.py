@@ -103,15 +103,13 @@ class Query:
         activate(user.language)
         return await get_vehicle_options(transfer)
     
-    @sbd.field(description='ALL')
-    @permission_required('ALL')
+    @sbd.field(description='Public')
     async def check_districts(
         root, info: Info,
         data: inputs.CheckDistricts
     ) -> outputs.SuccessResponse:
         pickup = await get_district(None, data, 'pickup')
         dropoff = await get_district(None, data, 'dropoff')
-        print(f"pickup: {pickup}, dropoff: {dropoff}")  # Debugging line
         return outputs.SuccessResponse(success=bool(pickup or dropoff))
 
     @sbd.field(description='OPERATOR, ADMIN, STAFF')

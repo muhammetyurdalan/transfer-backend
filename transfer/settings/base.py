@@ -223,6 +223,9 @@ if USE_S3:
         'OPTIONS': {
             'bucket_name': env('AWS_STORAGE_BUCKET_NAME'),
             'region_name': env('AWS_S3_REGION_NAME'),
+            # Regional host (bucket.s3.<region>.amazonaws.com): signed URLs
+            # on the global s3.amazonaws.com host fail outside us-east-1
+            'addressing_style': 'virtual',
             'access_key': env('AWS_ACCESS_KEY_ID'),
             'secret_key': env('AWS_SECRET_ACCESS_KEY'),
             'custom_domain': env('AWS_S3_CUSTOM_DOMAIN') or None,
