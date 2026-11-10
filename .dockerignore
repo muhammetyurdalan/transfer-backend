@@ -1,0 +1,12 @@
+.git
+.github
+deploy
+venv
+__pycache__
+*.pyc
+.env
+.env.*
+media
+static
+test.sqlite3
+.DS_Store

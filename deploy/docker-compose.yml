@@ -1,0 +1,96 @@
+# Production stack for cihanviptransfers.com
+# Lives on the server at /opt/transfer (copied there by the backend workflow).
+name: transfer
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-backend: &backend
+  image: ghcr.io/muhammetyurdalan/transfer-backend:latest
+  env_file: env/backend.env
+  restart: unless-stopped
+  logging: *logging
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_started
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./caddy:/etc/caddy:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      - backend_static:/srv/static:ro
+      - backend_media:/srv/media:ro
+    logging: *logging
+
+  frontend:
+    image: ghcr.io/muhammetyurdalan/transfer-frontend:latest
+    restart: unless-stopped
+    logging: *logging
+
+  backend:
+    <<: *backend
+    volumes:
+      - backend_static:/app/static
+      - backend_media:/app/media
+      - ./firebase:/app/firebase:ro
+
+  celery-worker:
+    <<: *backend
+    entrypoint: ["celery", "-A", "transfer", "worker", "-l", "info", "--concurrency", "2"]
+    volumes:
+      - backend_media:/app/media
+      - ./firebase:/app/firebase:ro
+
+  celery-beat:
+    <<: *backend
+    entrypoint: ["celery", "-A", "transfer", "beat", "-l", "info", "-s", "/tmp/celerybeat-schedule"]
+
+  microservice:
+    image: ghcr.io/muhammetyurdalan/transfer-microservice:latest
+    env_file: env/microservice.env
+    restart: unless-stopped
+    volumes:
+      - ./microservice/settings:/app/settings:ro
+    logging: *logging
+
+  postgres:
+    image: postgres:17-alpine
+    env_file: env/postgres.env
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging: *logging
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1"]
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    logging: *logging
+
+volumes:
+  caddy_data:
+  caddy_config:
+  backend_static:
+  backend_media:
+  pgdata:
+  redis_data:
