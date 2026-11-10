@@ -55,6 +55,19 @@ Her üç repoda **Settings → Secrets and variables → Actions**:
 
 Deploy sırası: **backend → microservice → frontend**.
 
+## GitHub Actions olmadan deploy
+
+Actions kullanılamadığında image'lar sunucuda build edilir:
+
+```bash
+/opt/transfer/deploy.sh backend        # veya microservice, frontend, all
+```
+
+Script `main` branch'ini `/opt/transfer/src` altına çeker, image'ı build eder
+ve servisi yeniden başlatır. Frontend için `VITE_*` değerleri
+`/opt/transfer/env/frontend.env` dosyasında olmalı. Private repolar için
+sunucuda salt-okuma yetkili bir GitHub token'ı `~/.git-credentials` içinde durur.
+
 ## Günlük kullanım
 
 ```bash
