@@ -1,0 +1,34 @@
+# Caddy gets and renews the HTTPS certificates automatically.
+
+cihanviptransfers.com {
+	redir https://www.cihanviptransfers.com{uri} permanent
+}
+
+www.cihanviptransfers.com {
+	encode zstd gzip
+	reverse_proxy frontend:80
+}
+
+api.cihanviptransfers.com {
+	encode zstd gzip
+
+	# Django's collectstatic output and uploaded files (DEBUG=False doesn't serve them)
+	handle_path /static/* {
+		root * /srv/static
+		file_server
+	}
+	handle_path /media/* {
+		root * /srv/media
+		file_server
+	}
+
+	# GraphQL, WebSocket, admin, psp-return
+	handle {
+		reverse_proxy backend:80
+	}
+}
+
+ms.cihanviptransfers.com {
+	encode zstd gzip
+	reverse_proxy microservice:8080
+}
