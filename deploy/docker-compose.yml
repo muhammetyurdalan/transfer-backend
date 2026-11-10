@@ -70,6 +70,10 @@ services:
     image: postgres:17-alpine
     env_file: env/postgres.env
     restart: unless-stopped
+    # Only reachable from the server itself (pgAdmin connects over an SSH tunnel).
+    # Never change this to "5432:5432": Docker would bypass the firewall.
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
