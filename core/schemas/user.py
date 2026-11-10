@@ -90,6 +90,7 @@ async def sign_up(info, data, role):
     user = user or User(email=email)
     ignored = ['secret', 'password', 'role']
     utils.set_attributes(user, data, ignored=ignored)
+    user.phone = utils.check_phone(data.phone)
     user.role = role
     user.status = enums.VerifyStatus.PENDING
     user.language = decoded_data['language']
@@ -182,6 +183,7 @@ class Mutation:
         user = user or User(email=email)
         ignored = ['email', 'password', 'language', 'district_ids']
         utils.set_attributes(user, data, ignored=ignored)
+        user.phone = utils.check_phone(data.phone)
         user.language = data.language or enums.Language.EN
         user.status = enums.VerifyStatus.ACCEPTED
         user.is_active = True
@@ -226,6 +228,8 @@ class Mutation:
         data: inputs.UpdateUser
     ) -> outputs.User:
         user = info.context['user']
+        if data.phone is not sb.UNSET:
+            data.phone = utils.check_phone(data.phone)
         utils.set_attributes(user, data)
         await user.asave()
         return user

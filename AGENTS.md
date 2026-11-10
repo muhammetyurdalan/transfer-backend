@@ -36,6 +36,8 @@ Testlerdeki traceback'ler beklenen `{"code": "ERR0xx"}` loglarıdır, sonuç sat
 
 Kayıt e-posta doğrulamalı (`getCode` → `validateCode`) iki mutation'la yapılır: `createCustomer` (`CUSTOMER`) ve `createDriver` (`DRIVER`), ikisi de `CreateUser` input'unu alır. `OPERATOR`'ü ADMIN `updateAdminUser` ile verir.
 
+- **Telefon zorunlu:** `CreateUser` ve `CreateAdminUser`'da `phone` zorunlu, boşlukları atılır, boşsa `ERR043`. `updateUser` telefonu değiştirebilir ama boş/`null` ile silemez (`ERR043`). DB alanı `blank=True` kaldı (eski kullanıcılarda boş olabilir), kural API'de. `createTransfer` müşterinin (OPERATOR/ADMIN/STAFF `customerId` verirse o müşterinin) telefonu yoksa `ERR043`, kullanıcı önce profilinden telefon eklemeli.
+
 - **`User.status`** (`VerifyStatus`: `PENDING` varsayılan, `ACCEPTED`, `REJECTED`): sadece ADMIN/STAFF görür (`permissions.json`). `updateAdminUser` ile ADMIN ve STAFF günceller, STAFF bu mutation'da sadece `status` gönderebilir (`role`/`isActive` ADMIN'e özel, `ERR001`). `createCustomer`/`createDriver` ile açılanlar `PENDING`. Status henüz hiçbir akışı (giriş, atama) etkilemiyor.
 - **`createAdminUser`** (ADMIN, STAFF): e-posta + şifre ile her rolde kullanıcı açar, `status=ACCEPTED`. `ADMIN`'i sadece ADMIN açabilir (`ERR001`). Opsiyonel `districtIds`, `OPERATOR` için zorunlu (`ERR030`), bulunamayan district `ERR035`. Kullanıcı iletişim bilgisi (`email`, `phone`) sadece kişinin kendisine ve ADMIN/STAFF/OPERATOR'e görünür.
 
@@ -129,11 +131,11 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR043**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR044**.
 
 | Aralık | Alan |
 |---|---|
-| ERR001–ERR004, ERR009–ERR012 | Auth, kullanıcı |
+| ERR001–ERR004, ERR009–ERR012, ERR043 | Auth, kullanıcı (ERR043: telefon zorunlu) |
 | ERR013–ERR016, ERR035 | Transfer (ERR035: district bulunamadı) |
 | ERR017–ERR024 | Mesajlaşma |
 | ERR025–ERR029 | Araç kategorisi, araç |

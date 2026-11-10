@@ -38,7 +38,7 @@ class CreateUser:
     password: str = required('128 chars max')
     first_name: str = required('50 chars max')
     last_name: str = required('50 chars max')
-    phone: Optional[str] = optional('20 chars max')
+    phone: str = required('20 chars max, not empty (ERR043)')
     profile_image: Optional[Upload] = optional()
 
 
@@ -49,7 +49,7 @@ class CreateAdminUser:
     role: enums.Role = required('only ADMIN can create ADMIN')
     first_name: str = required('50 chars max')
     last_name: str = required('50 chars max')
-    phone: Optional[str] = optional('20 chars max')
+    phone: str = required('20 chars max, not empty (ERR043)')
     language: Optional[enums.Language] = optional('default EN')
     profile_image: Optional[Upload] = optional()
     district_ids: Optional[List[sb.ID]] = optional('required for OPERATOR')
@@ -72,7 +72,7 @@ class UpdateUser:
     language: Optional[enums.Language] = optional()
     first_name: Optional[str] = optional('50 chars max')
     last_name: Optional[str] = optional('50 chars max')
-    phone: Optional[str] = optional('20 chars max')
+    phone: Optional[str] = optional('20 chars max, cannot be cleared (ERR043)')
     profile_image: Optional[Upload] = optional()
 
 

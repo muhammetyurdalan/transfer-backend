@@ -295,6 +295,7 @@ class Mutation:
             user = await User.objects.filter(pk=data.customer_id).afirst()
             assert user and user.is_active, dumps({'code': 'ERR010'})
             customer_id = data.customer_id
+        assert user.phone.strip(), dumps({'code': 'ERR043'})
         transfer = models.Transfer(customer_id=customer_id)
         ignored = IGNORED_CREATE_FIELDS
         utils.set_attributes(transfer, data, ignored=ignored, set_nulls=False)

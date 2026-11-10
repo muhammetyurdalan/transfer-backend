@@ -34,6 +34,14 @@ def get_fields(data, ignored=[]):
     return fields
 
 
+def check_phone(phone):
+    """Users must have a phone: stripped, not empty, ERR043 otherwise."""
+    phone = (phone or '').strip()
+    assert phone, dumps({'code': 'ERR043'})
+    assert len(phone) <= 20, dumps({'code': 'ERR030'})
+    return phone
+
+
 def set_attributes(instance, data, ignored=None, set_nulls=True):
     ignored = ignored or []
     if not isinstance(data, dict):

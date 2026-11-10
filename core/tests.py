@@ -234,7 +234,7 @@ class GraphQLTestCase(TestCase):
         def create(email, role='CUSTOMER', status='ACCEPTED'):
             return User.objects.create(
                 email=email, role=role, first_name=email.split('@')[0],
-                last_name='Test', status=status
+                last_name='Test', status=status, phone='+905550000000'
             )
         self.customer = create('customer@example.com')
         self.other_customer = create('other@example.com')
@@ -380,7 +380,8 @@ class UserTests(GraphQLTestCase):
         secret = self.ok(result, 'validateCode')['secret']
         data = {
             'secret': secret, 'password': PASSWORD,
-            'firstName': 'Ada', 'lastName': 'Lovelace', **kwargs
+            'firstName': 'Ada', 'lastName': 'Lovelace',
+            'phone': '+905551112233', **kwargs
         }
         return await self.execute(mutation, {'data': data})
 
@@ -390,6 +391,21 @@ class UserTests(GraphQLTestCase):
         self.assertEqual(user['role'], 'CUSTOMER')
         result = await self.sign_up('newdriver@example.com', CREATE_DRIVER)
         self.assertEqual(self.ok(result, 'createDriver')['user']['role'], 'DRIVER')
+
+    async def test_phone_required(self):
+        result = await self.sign_up('nophone@example.com', phone='  ')
+        self.assertEqual(self.error_code(result), 'ERR043')
+        result = await self.sign_up('phone@example.com', phone=' +905551 ')
+        user = await User.objects.aget(email='phone@example.com')
+        self.assertEqual(user.phone, '+905551')
+        update = 'mutation($data: UpdateUser!) { updateUser(data: $data) { id } }'
+        for phone in ('', None):
+            data = {'phone': phone}
+            result = await self.execute(update, {'data': data}, self.customer)
+            self.assertEqual(self.error_code(result), 'ERR043')
+        data = {'firstName': 'New'}
+        result = await self.execute(update, {'data': data}, self.customer)
+        self.ok(result, 'updateUser')
 
     async def test_create_driver_is_pending(self):
         data = {'email': 'd@example.com', 'language': 'TR', 'isUser': False}
@@ -401,7 +417,7 @@ class UserTests(GraphQLTestCase):
         )
         secret = self.ok(result, 'validateCode')['secret']
         data = {'secret': secret, 'password': PASSWORD, 'firstName': 'D',
-                'lastName': 'R'}
+                'lastName': 'R', 'phone': '+905551112233'}
         result = await self.execute(CREATE_DRIVER, {'data': data})
         user = self.ok(result, 'createDriver')['user']
         self.assertEqual(user['role'], 'DRIVER')
@@ -410,7 +426,8 @@ class UserTests(GraphQLTestCase):
 
     async def test_create_admin_user(self):
         data = {'email': 'Op@Example.com', 'password': PASSWORD,
-                'role': 'OPERATOR', 'firstName': 'O', 'lastName': 'P'}
+                'role': 'OPERATOR', 'firstName': 'O', 'lastName': 'P',
+                'phone': '+905551112233'}
         result = await self.execute(
             CREATE_ADMIN_USER, {'data': data}, self.operator
         )
@@ -431,7 +448,8 @@ class UserTests(GraphQLTestCase):
         result = await self.execute(CREATE_ADMIN_USER, {'data': data}, self.staff)
         self.assertEqual(self.error_code(result), 'ERR011')
         data = {'email': 'a2@example.com', 'password': PASSWORD,
-                'role': 'ADMIN', 'firstName': 'A', 'lastName': 'B'}
+                'role': 'ADMIN', 'firstName': 'A', 'lastName': 'B',
+                'phone': '+905551112233'}
         result = await self.execute(CREATE_ADMIN_USER, {'data': data}, self.staff)
         self.assertEqual(self.error_code(result), 'ERR001')
         result = await self.execute(CREATE_ADMIN_USER, {'data': data}, self.admin)
@@ -841,6 +859,18 @@ class VehicleTests(GraphQLTestCase):
 
 
 class TransferTests(GraphQLTestCase):
+    async def test_create_transfer_requires_customer_phone(self):
+        await User.objects.filter(pk=self.customer.pk).aupdate(phone='')
+        self.customer.phone = ''
+        variables = {'data': self.transfer_data()}
+        result = await self.execute(CREATE_TRANSFER, variables, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR043')
+        # Created for the customer by an operator: the customer's phone counts
+        data = self.transfer_data(customerId=str(self.customer.id))
+        result = await self.execute(CREATE_TRANSFER, {'data': data}, self.operator)
+        self.assertEqual(self.error_code(result), 'ERR043')
+        self.assertFalse(await models.Transfer.objects.aexists())
+
     async def test_create_transfer_returns_priced_vehicle_options(self):
         created = await self.create_transfer()
         self.assertEqual(created['transfer']['status'], 'PENDING')
