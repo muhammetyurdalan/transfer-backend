@@ -58,8 +58,12 @@ class Query:
 def send_code(code, email, language):
     activate(language)
     subject = gettext('Verification Code')
-    message = gettext('Your verification code is %(code)s') % {'code': code}
-    tasks.send_email.delay(subject, message, [email])
+    tasks.send_email.delay({
+        'action': 'verification',
+        'message': code,
+        'subject': subject,
+        'to_user': {'email': email, 'language': language},
+    })
 
 
 def get_code_response(payload):

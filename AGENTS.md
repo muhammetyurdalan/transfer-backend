@@ -17,13 +17,13 @@ Mesajlaşmalı transfer (VIP/özel araç) uygulamasının Django + Strawberry Gr
 
 ```bash
 python3.13 -m venv venv && ./venv/bin/pip install -r requirements.txt
-cp .env.example .env        # SECRET_KEY, JWT_SECRET, FERNET_KEY, PSP_MS_URL, MS_ACCESS_TOKEN doldur
+cp .env.example .env        # SECRET_KEY, JWT_SECRET, FERNET_KEY, PSP_MS_URL, MAIL_MS_URL, MS_ACCESS_TOKEN doldur
 DJANGO_SETTINGS_MODULE=transfer.settings.test ./venv/bin/python -W error::DeprecationWarning manage.py test core
 ./venv/bin/python manage.py makemigrations --check --dry-run
 ./venv/bin/python manage.py migrate && ./venv/bin/daphne transfer.asgi:application
 ```
 
-Testlerdeki traceback'ler beklenen `{"code": "ERR0xx"}` loglarıdır, sonuç satırına bak. Ödeme mikroservisi testlerde `core.psp.async_post` mock'lanır.
+Testlerdeki traceback'ler beklenen `{"code": "ERR0xx"}` loglarıdır, sonuç satırına bak. Ödeme mikroservisi testlerde `core.psp.async_post`, mail mikroservisi `core.tasks.post` mock'lanır.
 
 ## 3. Roller
 
@@ -36,6 +36,7 @@ Testlerdeki traceback'ler beklenen `{"code": "ERR0xx"}` loglarıdır, sonuç sat
 
 Kayıt e-posta doğrulamalı (`getCode` → `validateCode`) iki mutation'la yapılır: `createCustomer` (`CUSTOMER`) ve `createDriver` (`DRIVER`), ikisi de `CreateUser` input'unu alır. `OPERATOR`'ü ADMIN `updateAdminUser` ile verir.
 
+- **E-posta:** Django mail backend'i kullanılmaz. `tasks.send_email(data)` (celery) `MAIL_MS_URL`'e (mail mikroservisi, `transfer-microservice` `/mail/v1/sendTransferEmail`, `X-Access-Token: MS_ACCESS_TOKEN`) POST atar. `data`: `action` (şablon adı, `<action>_<dil>.html`), `to_user` (`email`, `language`), `subject`, `message`, opsiyonel `link`/`transfer`/`from_user`. `getCode` doğrulama kodunu `action: 'verification'`, `message: <kod>` ile gönderir. Hata loglanır, istemciye dönmez.
 - **Telefon zorunlu:** `CreateUser` ve `CreateAdminUser`'da `phone` zorunlu, boşlukları atılır, boşsa `ERR043`. `updateUser` telefonu değiştirebilir ama boş/`null` ile silemez (`ERR043`). DB alanı `blank=True` kaldı (eski kullanıcılarda boş olabilir), kural API'de. `createTransfer` müşterinin (OPERATOR/ADMIN/STAFF `customerId` verirse o müşterinin) telefonu yoksa `ERR043`, kullanıcı önce profilinden telefon eklemeli.
 
 - **`User.status`** (`VerifyStatus`: `PENDING` varsayılan, `ACCEPTED`, `REJECTED`): sadece ADMIN/STAFF görür (`permissions.json`). `updateAdminUser` ile ADMIN ve STAFF günceller, STAFF bu mutation'da sadece `status` gönderebilir (`role`/`isActive` ADMIN'e özel, `ERR001`). `createCustomer`/`createDriver` ile açılanlar `PENDING`. Status henüz hiçbir akışı (giriş, atama) etkilemiyor.

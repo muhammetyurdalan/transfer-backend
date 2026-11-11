@@ -1,10 +1,11 @@
 from asgiref.sync import async_to_sync as a2s
 from celery import shared_task
 from django.conf import settings
-from django.core.mail import send_mail
 from django.utils import timezone
 from fcm_django.models import FCMDevice
 from firebase_admin.messaging import Message, Notification
+from httpx import HTTPError, post
+from json import dumps, loads
 from logging import getLogger
 from strawberry.exceptions import StrawberryGraphQLError as Error
 from core import enums, models, psp, utils
@@ -15,8 +16,26 @@ Status = enums.TransferStatus
 
 
 @shared_task
-def send_email(subject, message, recipients):
-    return send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, recipients)
+def send_email(data):
+    """
+    Sends an email through the mail microservice (MAIL_MS_URL,
+    /sendTransferEmail). data: action (template, e.g. 'verification'),
+    to_user {'email', 'language'}, subject, message, link, transfer.
+    Returns whether the microservice accepted it, failures are logged.
+    """
+    data = loads(dumps(data, default=str))
+    action = data.get('action')
+    try:
+        response = post(
+            settings.MAIL_MS_URL, headers=psp.get_headers(), json=data,
+            timeout=30.0
+        ).json()
+    except (HTTPError, ValueError) as error:
+        logger.error('Mail %s failed: %r', action, error)
+        return False
+    if not response.get('success'):
+        logger.error('Mail %s failed: %s', action, response.get('error'))
+    return bool(response.get('success'))
 
 
 @shared_task

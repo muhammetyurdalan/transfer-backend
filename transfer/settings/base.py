@@ -121,9 +121,11 @@ CHANNEL_LAYERS = {
 }
 
 
-# Payment Service (PSP microservice)
+# Microservices (payment, mail), both use MS_ACCESS_TOKEN
 
 PSP_MS_URL = env('PSP_MS_URL', '')
+# Full endpoint, e.g. https://<host>/mail/v1/sendTransferEmail
+MAIL_MS_URL = env('MAIL_MS_URL', '')
 MS_ACCESS_TOKEN = env('MS_ACCESS_TOKEN', '')
 
 
@@ -137,17 +139,6 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(minute=0),
     },
 }
-
-
-# Email
-
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = env('EMAIL_HOST', '')
-EMAIL_PORT = int(env('EMAIL_PORT', '587'))
-EMAIL_HOST_USER = env('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', '')
-EMAIL_USE_TLS = env_bool('EMAIL_USE_TLS', True)
-DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', 'no-reply@transfer.com')
 
 
 # Push Notifications (FCM). Disabled when no credentials file is given.

@@ -1,8 +1,6 @@
 import asyncio
-import re
 from datetime import timedelta
 from decimal import Decimal
-from django.core import mail
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from fcm_django.models import FCMDevice
@@ -294,6 +292,17 @@ class GraphQLTestCase(TestCase):
         self.async_post = self.psp.start()
         self.async_post.side_effect = psp_response
         self.addCleanup(self.psp.stop)
+        # Mail microservice: tasks.send_email posts here, sent_code() reads it
+        self.mail = patch('core.tasks.post')
+        self.mail_post = self.mail.start()
+        self.mail_post.return_value.json.return_value = {'success': True}
+        self.addCleanup(self.mail.stop)
+
+    def sent_code(self):
+        """Verification code of the last email sent to the microservice."""
+        data = self.mail_post.call_args.kwargs['json']
+        self.assertEqual(data['action'], 'verification')
+        return data['message']
 
     async def execute(self, query, variables=None, user=None):
         headers = {}
@@ -374,7 +383,7 @@ class UserTests(GraphQLTestCase):
         data = {'email': email, 'language': 'EN', 'isUser': False}
         result = await self.execute(GET_CODE, {'data': data})
         secret = self.ok(result, 'getCode')['secret']
-        code = re.search(r'\d{6}', mail.outbox[-1].body).group()
+        code = self.sent_code()
         data = {'code': code, 'secret': secret}
         result = await self.execute(VALIDATE_CODE, {'data': data})
         secret = self.ok(result, 'validateCode')['secret']
@@ -411,7 +420,7 @@ class UserTests(GraphQLTestCase):
         data = {'email': 'd@example.com', 'language': 'TR', 'isUser': False}
         result = await self.execute(GET_CODE, {'data': data})
         secret = self.ok(result, 'getCode')['secret']
-        code = re.search(r'\d{6}', mail.outbox[-1].body).group()
+        code = self.sent_code()
         result = await self.execute(
             VALIDATE_CODE, {'data': {'code': code, 'secret': secret}}
         )

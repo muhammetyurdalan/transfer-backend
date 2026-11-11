@@ -19,8 +19,3 @@ CHANNEL_LAYERS = {
 
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
-
-
-# Email: printed to console
-
-EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
