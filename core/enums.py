@@ -73,6 +73,8 @@ class TransactionCategory(TextChoices):
 class Language(TextChoices):
     EN = 'en'
     TR = 'tr'
+    DE = 'de'
+    RU = 'ru'
 
 
 @enum

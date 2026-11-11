@@ -163,14 +163,23 @@ class VehicleCategoryOrder:
 class VehicleCategory:
     # Active language (user's language or the language argument). The
     # translation descriptor reads the language columns, so load them too.
-    name: Optional[str] = sbd.field(only=['name', 'name_en', 'name_tr'])
+    name: Optional[str] = sbd.field(
+        only=['name', 'name_en', 'name_tr', 'name_de', 'name_ru']
+    )
     description: Optional[str] = sbd.field(
-        only=['description', 'description_en', 'description_tr']
+        only=[
+            'description', 'description_en', 'description_tr',
+            'description_de', 'description_ru'
+        ]
     )
     name_en: Optional[str]
     name_tr: Optional[str]
+    name_de: Optional[str]
+    name_ru: Optional[str]
     description_en: Optional[str]
     description_tr: Optional[str]
+    description_de: Optional[str]
+    description_ru: Optional[str]
     image: Optional[str]
     currency: Optional[enums.Currency]
 
