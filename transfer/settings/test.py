@@ -8,6 +8,7 @@ SECRET_KEY = 'test-secret-key'
 JWT_SECRET = 'test-jwt-secret-with-at-least-32-bytes-length'
 FERNET_KEY = 'PrfC6-ryvvydMXHK6qp8cCLvYkLu-CaRwE7hmxCd6t4='
 PSP_MS_URL = 'https://psp.test'
+MAIL_MS_URL = 'https://mail.test/mail/v1/sendTransferEmail'
 MS_ACCESS_TOKEN = 'test-ms-access-token'
 
 
@@ -21,14 +22,13 @@ DATABASES = {
 }
 
 
-# Channels / Celery / Email: in-process
+# Channels / Celery: in-process
 
 CHANNEL_LAYERS = {
     'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}
 }
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
-EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
 PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
 
 
