@@ -183,6 +183,8 @@ USE_TZ = True
 LANGUAGES = (
     ('en', 'English'),
     ('tr', 'Turkish'),
+    ('de', 'German'),
+    ('ru', 'Russian'),
 )
 
 LOCALE_PATHS = [BASE_DIR / 'locale']

@@ -74,7 +74,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - Leg'ler fiyatı, uygunluğu ve sürücü müsaitliğini etkilemez. `updateTransfer` leg'leri değiştirmez.
 
 ### 4.1 Araç kategorisi ve fiyat
-- `VehicleCategory`: `max_passengers`, `max_luggage`, `child_seat_capacity`, `is_wheelchair_accessible`, `base_fare`, `per_km_price`, `per_minute_price`, `minimum_fare`, `currency`, `order`, `is_active`. `name`/`description` çok dilli (`name_en`, `name_tr`).
+- `VehicleCategory`: `max_passengers`, `max_luggage`, `child_seat_capacity`, `is_wheelchair_accessible`, `base_fare`, `per_km_price`, `per_minute_price`, `minimum_fare`, `currency`, `order`, `is_active`. `name`/`description` çok dilli (`name_en`, `name_tr`, `name_de`, `name_ru`; boş olan dil `en`'e düşer).
 - **Uygunluk** (`VehicleCategoryQuerySet.eligible_for`): aktif ve `passenger_count`, `luggage_count`, `child_seat_count` kapasiteyi aşmıyor, `needs_wheelchair` ise erişilebilir.
 - **Fiyat** (`VehicleCategory.get_price`): `max(minimum_fare, base_fare + distance_km * per_km_price + duration_min * per_minute_price)`, 2 ondalık.
 - `distance` (km) ve `duration` (dk) istemciden gelir (harita SDK'sı), fiyat her zaman sunucuda hesaplanır.
@@ -119,7 +119,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 
 ### 4.5 Bildirim ve push
 - `utils.create_notifications` DB + WebSocket (`NOTIFICATION`) + FCM push (`FCM_ENABLED`, yani `FIREBASE_CREDENTIALS` doluysa, `tasks.send_push`).
-- `utils.notify_users` her alıcının dilinde bildirim üretir (`gettext_noop` metinleri, `locale/` henüz yok).
+- `utils.notify_users` her alıcının dilinde bildirim üretir (`gettext_noop` metinleri). Diller: `en`, `tr`, `de`, `ru` (`enums.Language`, `settings.LANGUAGES`). Çeviriler `locale/<dil>/LC_MESSAGES/django.po`; yeni metin eklenince `makemessages -l tr -l de -l ru --ignore=venv` → çevir → `compilemessages --ignore=venv` (`.mo` dosyaları da commit'lenir).
 - Cihaz: `updateFcmToken(registrationId, type)`, `deleteFcmToken(registrationId)`. `deleteUser` cihazları siler.
 
 ### 4.5.1 Periyodik işler (`core/tasks.py`, celery beat)
@@ -169,5 +169,5 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 | İptal edilmiş transfer için gelen başarılı ödeme | Sadece loglanıyor, otomatik iade yok |
 | Eşzamanlı atama | `assignDriver` kontrol + kayıt arasında kilit yok, iki operatör aynı anda aynı sürücüyü çakışan transferlere atayabilir |
 | Alış saati geçmiş ödenmiş (`ACCEPTED`) transferler | Otomatik işlem yok, `check_transfers_expiring` sadece `PENDING`'i expire eder |
-| Çeviriler | `locale/` yok, bildirim metinleri her dilde İngilizce |
+| Çeviriler | `locale/` (tr, de, ru); mail şablonları mikroserviste `<action>_<dil>.html`, de/ru şablonları orada eklenmeli |
 | District eşleştirme | Sadece isimle, şehir olmadan. Aynı isimli district'lerde yanlış eşleşme olabilir. PostgreSQL'de Türkçe `İ/ı` harfleri `iexact` ile her zaman eşleşmeyebilir |
