@@ -107,6 +107,50 @@ class SignInResponse:
     token: str
 
 
+# Invitation
+
+@sbd.filter_type(models.Invitation)
+class InvitationFilter:
+    id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
+    receiver_email: Optional[sbd.StrFilterLookup] = sb.UNSET
+    status: Optional[sbd.BaseFilterLookup[enums.InvitationStatus]] = sb.UNSET
+    sender_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
+    created_at: Optional[sbd.DatetimeFilterLookup] = sb.UNSET
+    expires_at: Optional[sbd.DatetimeFilterLookup] = sb.UNSET
+
+
+@sbd.order_type(models.Invitation)
+class InvitationOrder:
+    id: sb.auto
+    receiver_email: sb.auto
+    status: sb.auto
+    created_at: sb.auto
+    expires_at: sb.auto
+
+
+@sbd.type(models.Invitation, fields='__all__')
+class Invitation:
+    sender_id: Optional[sb.ID]
+    sender: Optional[User]
+    receiver_id: Optional[sb.ID]
+    receiver: Optional[User]
+    receiver_role: Optional[enums.Role]
+    language: Optional[enums.Language]
+    status: Optional[enums.InvitationStatus]
+
+
+@sb.type
+class InvitationsPaginated:
+    invitations: Optional[List[Invitation]]
+    count: Optional[int]
+
+
+@sb.type
+class InvitationInfo:
+    email: str
+    language: enums.Language
+
+
 # Notification
 
 @sbd.filter_type(models.Notification)

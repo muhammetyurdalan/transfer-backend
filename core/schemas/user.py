@@ -16,6 +16,7 @@ from strawberry_django.pagination import OffsetPaginationInput
 from typing import AsyncGenerator, List, Optional
 from core import enums, inputs, models, outputs, tasks, utils
 from core.decorators import append_user, permission_required
+from core.schemas.invitation import get_pending_invitation
 
 
 User = utils.User
@@ -89,6 +90,11 @@ def check_password(password, user=None):
 async def sign_up(info, data, role):
     decoded_data = get_validated_data(data.secret)
     email = decoded_data['email']
+    invited = bool(decoded_data.get('invitation_id'))
+    if invited:
+        assert role == enums.Role.CUSTOMER, dumps({'code': 'ERR001'})
+        invitation = await get_pending_invitation(decoded_data)
+        assert invitation, dumps({'code': 'ERR044'})
     user = await manager.filter(email=email).afirst()
     assert not (user and user.is_active), dumps({'code': 'ERR011'})
     user = user or User(email=email)
@@ -96,12 +102,22 @@ async def sign_up(info, data, role):
     utils.set_attributes(user, data, ignored=ignored)
     user.phone = utils.check_phone(data.phone)
     user.role = role
-    user.status = enums.VerifyStatus.PENDING
+    status = enums.VerifyStatus.ACCEPTED if invited else enums.VerifyStatus.PENDING
+    user.status = status
     user.language = decoded_data['language']
     user.is_active = True
     check_password(data.password, user)
     user.set_password(data.password)
     await user.asave()
+    if role == enums.Role.CUSTOMER:
+        # Also closes invitations to this email when signed up without the link
+        invitations = models.Invitation.objects.filter(
+            receiver_email=email, status=enums.InvitationStatus.PENDING
+        )
+        await invitations.aupdate(
+            receiver=user, status=enums.InvitationStatus.ACCEPTED,
+            updated_at=timezone.now()
+        )
     token = utils.create_token(user.email)
     append_user(info.context, user)
     return outputs.SignInResponse(user=user, token=token)

@@ -123,6 +123,51 @@ class User(AbstractBaseUser):
         return f'{self.first_name} {self.last_name}'
 
 
+class Invitation(models.Model):
+    """
+    A customer invitation sent by ADMIN/STAFF/OPERATOR. The email carries a
+    secret that signs the receiver up without email verification. ACCEPTED
+    once the receiver signs up, PENDING ones past expires_at are expired.
+    """
+    sender = models.ForeignKey(
+        User,
+        related_name='invitations_sent',
+        on_delete=models.SET_NULL,
+        blank=True, null=True
+    )
+    receiver = models.ForeignKey(
+        User,
+        related_name='invitations_received',
+        on_delete=models.SET_NULL,
+        blank=True, null=True
+    )
+    receiver_role = models.CharField(
+        max_length=10,
+        choices=enums.Role.choices,
+        default=enums.Role.CUSTOMER
+    )
+    receiver_email = models.EmailField(max_length=100)
+    language = models.CharField(
+        max_length=2,
+        choices=enums.Language.choices,
+        default=enums.Language.EN
+    )
+    status = models.CharField(
+        max_length=10,
+        choices=enums.InvitationStatus.choices,
+        default=enums.InvitationStatus.PENDING
+    )
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+
+    def __str__(self):
+        return f'{self.receiver_email}, {self.status}'
+
+
 class Notification(models.Model):
     user = models.ForeignKey(
         User,

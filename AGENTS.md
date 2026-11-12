@@ -37,6 +37,7 @@ Testlerdeki traceback'ler beklenen `{"code": "ERR0xx"}` loglarıdır, sonuç sat
 Kayıt e-posta doğrulamalı (`getCode` → `validateCode`) iki mutation'la yapılır: `createCustomer` (`CUSTOMER`) ve `createDriver` (`DRIVER`), ikisi de `CreateUser` input'unu alır. `OPERATOR`'ü ADMIN `updateAdminUser` ile verir.
 
 - **E-posta:** Django mail backend'i kullanılmaz. `tasks.send_email(data)` (celery) `MAIL_MS_URL`'e (mail mikroservisi, `transfer-microservice` `/mail/v1/sendTransferEmail`, `X-Access-Token: MS_ACCESS_TOKEN`) POST atar. `data`: `action` (şablon adı, `<action>_<dil>.html`), `to_user` (`email`, `language`), `subject`, `message`, opsiyonel `link`/`transfer`/`from_user`. `getCode` doğrulama kodunu `action: 'verification'`, `message: <kod>` ile gönderir. Hata loglanır, istemciye dönmez.
+- **Müşteri daveti** (`schemas/invitation.py`, model `Invitation`): `inviteCustomer(email, language?)` ADMIN/STAFF/OPERATOR. `language` verilmezse davet edenin dili. Aktif kullanıcı varsa `ERR011`, geçersiz e-posta `ERR030`. Aynı e-postaya `PENDING` davet varsa yenilenir (gönderen, dil, `expires_at`) ve tekrar gönderilir. Mail `action: 'invitation'`, `message: <secret>`, `link: FRONTEND_URL/register?invitation=<secret>`, `from_user` (davet eden). Secret `is_validated` taşır, yani e-posta doğrulaması yerine geçer ve doğrudan `createCustomer`'a verilir (`createDriver`'da `ERR001`). Kayıtta davet `ACCEPTED` (`receiver` set) olur, müşteri `status=ACCEPTED` açılır. Davetsiz kayıt da o e-postanın `PENDING` davetlerini kapatır. Kullanılmış/bulunamayan davet `ERR044`, süresi geçmiş secret `ERR009` (`INVITATION_EXPIRE_DAYS`, varsayılan 7). `invitations` sorgusu ADMIN/STAFF hepsini, OPERATOR kendi gönderdiklerini görür. Public `invitationInfo(secret)` kayıt formu için e-posta + dil döner. Süresi geçen davet `PENDING` kalır, istemci `expiresAt`'e bakar.
 - **Telefon zorunlu:** `CreateUser` ve `CreateAdminUser`'da `phone` zorunlu, boşlukları atılır, boşsa `ERR043`. `updateUser` telefonu değiştirebilir ama boş/`null` ile silemez (`ERR043`). DB alanı `blank=True` kaldı (eski kullanıcılarda boş olabilir), kural API'de. `createTransfer` müşterinin (OPERATOR/ADMIN/STAFF `customerId` verirse o müşterinin) telefonu yoksa `ERR043`, kullanıcı önce profilinden telefon eklemeli.
 
 - **`User.status`** (`VerifyStatus`: `PENDING` varsayılan, `ACCEPTED`, `REJECTED`): sadece ADMIN/STAFF görür (`permissions.json`). `updateAdminUser` ile ADMIN ve STAFF günceller, STAFF bu mutation'da sadece `status` gönderebilir (`role`/`isActive` ADMIN'e özel, `ERR001`). `createCustomer`/`createDriver` ile açılanlar `PENDING`. Status henüz hiçbir akışı (giriş, atama) etkilemiyor.
@@ -132,11 +133,11 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR044**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR045**.
 
 | Aralık | Alan |
 |---|---|
-| ERR001–ERR004, ERR009–ERR012, ERR043 | Auth, kullanıcı (ERR043: telefon zorunlu) |
+| ERR001–ERR004, ERR009–ERR012, ERR043, ERR044 | Auth, kullanıcı (ERR043: telefon zorunlu, ERR044: davet bulunamadı/kullanılmış) |
 | ERR013–ERR016, ERR035 | Transfer (ERR035: district bulunamadı) |
 | ERR017–ERR024 | Mesajlaşma |
 | ERR025–ERR029 | Araç kategorisi, araç |
