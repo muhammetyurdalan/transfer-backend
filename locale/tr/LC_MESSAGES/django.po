@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-11 21:33+0300\n"
+"POT-Creation-Date: 2026-11-12 13:35+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,6 +16,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
+
 #: core/psp.py:157 core/schemas/transfer.py:437
 msgid "New Transfer"
 msgstr "Yeni Transfer"
@@ -42,6 +43,11 @@ msgstr "İade"
 #, python-format
 msgid "A refund was made for transfer #%(id)s"
 msgstr "#%(id)s numaralı transfer için iade yapıldı"
+
+#: core/schemas/invitation.py:49
+#, python-brace-format
+msgid "You are invited to {app_name}"
+msgstr "{app_name} için davet edildiniz"
 
 #: core/schemas/message.py:66
 msgid "New Message"
@@ -83,6 +89,6 @@ msgstr "Transfer İptal Edildi"
 msgid "Transfer #%(id)s was cancelled"
 msgstr "#%(id)s numaralı transfer iptal edildi"
 
-#: core/schemas/user.py:60 tests.py:19
+#: core/schemas/user.py:61 tests.py:19
 msgid "Verification Code"
 msgstr "Doğrulama Kodu"

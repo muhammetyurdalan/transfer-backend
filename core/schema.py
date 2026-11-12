@@ -13,6 +13,8 @@ from core.schemas.city import Query as city_query
 from core.schemas.city import Mutation as city_mutation
 from core.schemas.district import Query as district_query
 from core.schemas.district import Mutation as district_mutation
+from core.schemas.invitation import Query as invitation_query
+from core.schemas.invitation import Mutation as invitation_mutation
 from core.schemas.message import Query as message_query
 from core.schemas.message import Mutation as message_mutation
 from core.schemas.notification import Query as notification_query
@@ -37,6 +39,7 @@ from core.schemas.vehicle_category import (
 queries = (
     city_query,
     district_query,
+    invitation_query,
     message_query,
     notification_query,
     state_query,
@@ -50,6 +53,7 @@ queries = (
 mutations = (
     city_mutation,
     district_mutation,
+    invitation_mutation,
     message_mutation,
     notification_mutation,
     state_mutation,

@@ -127,6 +127,9 @@ PSP_MS_URL = env('PSP_MS_URL', '')
 # Full endpoint, e.g. https://<host>/mail/v1/sendTransferEmail
 MAIL_MS_URL = env('MAIL_MS_URL', '')
 MS_ACCESS_TOKEN = env('MS_ACCESS_TOKEN', '')
+FRONTEND_URL = env('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+APP_NAME = env('APP_NAME', 'Cihan Vip Transfers')
+INVITATION_EXPIRE_DAYS = int(env('INVITATION_EXPIRE_DAYS', '7'))
 
 
 # Celery

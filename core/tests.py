@@ -110,6 +110,17 @@ mutation($data: TipDriver!) { tipDriver(data: $data) { paymentLink } }
 CREATE_DRIVER = '''
 mutation($data: CreateUser!) { createDriver(data: $data) { token user { id role } } }
 '''
+INVITE_CUSTOMER = '''
+mutation($data: InviteCustomer!) {
+  inviteCustomer(data: $data) { id receiverEmail language status expiresAt }
+}
+'''
+INVITATIONS = '''
+query { invitations { count invitations { receiverEmail status sender { id } } } }
+'''
+INVITATION_INFO = '''
+query($secret: String!) { invitationInfo(secret: $secret) { email language } }
+'''
 CREATE_ADMIN_USER = '''
 mutation($data: CreateAdminUser!) {
   createAdminUser(data: $data) { id role status }
@@ -490,6 +501,81 @@ class UserTests(GraphQLTestCase):
         result = await self.sign_up('x@example.com', role='OPERATOR')
         self.assertIn('errors', result)
         self.assertFalse(await User.objects.filter(email='x@example.com').aexists())
+
+
+class InvitationTests(GraphQLTestCase):
+    async def invite(self, user, **data):
+        data = {'email': 'Guest@Example.com', **data}
+        return await self.execute(INVITE_CUSTOMER, {'data': data}, user)
+
+    def sent_invitation(self):
+        data = self.mail_post.call_args.kwargs['json']
+        self.assertEqual(data['action'], 'invitation')
+        return data
+
+    async def sign_up(self, secret, mutation=CREATE_USER):
+        data = {
+            'secret': secret, 'password': PASSWORD, 'firstName': 'Gu',
+            'lastName': 'Est', 'phone': '+905551112233'
+        }
+        return await self.execute(mutation, {'data': data})
+
+    async def test_permissions_and_validation(self):
+        for user in (self.customer, self.driver):
+            result = await self.invite(user)
+            self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.invite(self.admin, email='not-an-email')
+        self.assertEqual(self.error_code(result), 'ERR030')
+        result = await self.invite(self.admin, email=self.customer.email)
+        self.assertEqual(self.error_code(result), 'ERR011')
+
+    async def test_language_defaults_to_inviter(self):
+        await User.objects.filter(pk=self.staff.id).aupdate(language='de')
+        result = await self.invite(self.staff)
+        invitation = self.ok(result, 'inviteCustomer')
+        self.assertEqual(invitation['receiverEmail'], 'guest@example.com')
+        self.assertEqual(invitation['language'], 'DE')
+        self.assertEqual(invitation['status'], 'PENDING')
+        mail = self.sent_invitation()
+        self.assertEqual(mail['to_user']['language'], 'de')
+        self.assertIn('/register?invitation=', mail['link'])
+        result = await self.invite(self.staff, language='RU')
+        self.assertEqual(self.ok(result, 'inviteCustomer')['language'], 'RU')
+        # Inviting again renews the same PENDING invitation
+        count = await models.Invitation.objects.acount()
+        self.assertEqual(count, 1)
+
+    async def test_sign_up_with_invitation(self):
+        self.ok(await self.invite(self.operator, language='TR'), 'inviteCustomer')
+        secret = self.sent_invitation()['message']
+        result = await self.execute(INVITATION_INFO, {'secret': secret})
+        info = self.ok(result, 'invitationInfo')
+        self.assertEqual(info, {'email': 'guest@example.com', 'language': 'TR'})
+        # Customer invitations cannot sign up drivers
+        result = await self.sign_up(secret, CREATE_DRIVER)
+        self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.sign_up(secret)
+        self.assertEqual(self.ok(result, 'createCustomer')['user']['role'], 'CUSTOMER')
+        user = await User.objects.aget(email='guest@example.com')
+        self.assertEqual((user.status, user.language), ('ACCEPTED', 'tr'))
+        invitation = await models.Invitation.objects.aget()
+        self.assertEqual(invitation.status, 'ACCEPTED')
+        self.assertEqual(invitation.receiver_id, user.id)
+        # Used once
+        result = await self.execute(INVITATION_INFO, {'secret': secret})
+        self.assertEqual(self.error_code(result), 'ERR044')
+        result = await self.sign_up(secret)
+        self.assertEqual(self.error_code(result), 'ERR044')
+
+    async def test_operator_sees_own_invitations(self):
+        self.ok(await self.invite(self.operator), 'inviteCustomer')
+        self.ok(await self.invite(self.admin, email='b@example.com'), 'inviteCustomer')
+        result = await self.execute(INVITATIONS, user=self.operator)
+        self.assertEqual(self.ok(result, 'invitations')['count'], 1)
+        result = await self.execute(INVITATIONS, user=self.staff)
+        self.assertEqual(self.ok(result, 'invitations')['count'], 2)
+        result = await self.execute(INVITATIONS, user=self.customer)
+        self.assertEqual(self.error_code(result), 'ERR001')
 
 
 class VehicleCategoryTests(GraphQLTestCase):

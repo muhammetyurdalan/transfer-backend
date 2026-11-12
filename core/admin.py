@@ -6,7 +6,7 @@ from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from modeltranslation.admin import TranslationAdmin
 from core.models import (
-    City, District, Leg, Message, Notification, State, ThroughMessage,
+    City, District, Invitation, Leg, Message, Notification, State, ThroughMessage,
     Transaction, Transfer, User, Vehicle, VehicleCategory
 )
 
@@ -89,6 +89,17 @@ class UserAdmin(BaseUserAdmin):
 
 admin.site.register(User, UserAdmin)
 admin.site.unregister(Group)
+
+
+@admin.register(Invitation)
+class InvitationAdmin(admin.ModelAdmin):
+    list_display = [
+        'id', 'receiver_email', 'status', 'language', 'sender_id',
+        'expires_at', 'created_at'
+    ]
+    list_filter = ['status', 'language']
+    search_fields = ['receiver_email', 'sender__email']
+    raw_id_fields = ['sender', 'receiver']
 
 
 @admin.register(Notification)

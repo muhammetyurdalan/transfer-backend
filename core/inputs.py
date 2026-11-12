@@ -43,6 +43,14 @@ class CreateUser:
 
 
 @sb.input
+class InviteCustomer:
+    email: str = required('100 chars max')
+    language: Optional[enums.Language] = optional(
+        "invitation email and account language, default: the inviter's"
+    )
+
+
+@sb.input
 class CreateAdminUser:
     email: str = required('100 chars max, unique')
     password: str = required('128 chars max')
