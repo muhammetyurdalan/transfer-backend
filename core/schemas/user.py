@@ -110,7 +110,6 @@ async def sign_up(info, data, role):
     user.set_password(data.password)
     await user.asave()
     if role == enums.Role.CUSTOMER:
-        # Also closes invitations to this email when signed up without the link
         invitations = models.Invitation.objects.filter(
             receiver_email=email, status=enums.InvitationStatus.PENDING
         )

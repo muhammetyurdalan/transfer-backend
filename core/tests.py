@@ -1203,13 +1203,31 @@ class TransferTests(GraphQLTestCase):
         self.assertEqual(payment.order_id, 'order_1')
         notifications = models.Notification.objects.filter(action='TRANSFER_ACCEPTED')
         user_ids = {n.user_id async for n in notifications}
-        self.assertEqual(user_ids, {self.operator.id, self.other_operator.id})
+        # Transfer's operator and all ADMIN/STAFF, each also gets an email
+        self.assertEqual(
+            user_ids, {transfer.operator_id, self.admin.id, self.staff.id}
+        )
+        operator = await User.objects.aget(pk=transfer.operator_id)
+        emails = [
+            call.kwargs['json'] for call in self.mail_post.call_args_list
+            if call.kwargs['json']['action'] == 'transfer_accepted'
+        ]
+        self.assertEqual(
+            sorted(email['to_user']['email'] for email in emails),
+            sorted([
+                'admin@example.com', 'staff@example.com',
+                self.customer.email, operator.email
+            ])
+        )
+        self.assertNotIn('psp_data', emails[0]['transfer'])
+        mails_before = self.mail_post.call_count - len(emails)
         # A repeated return is processed once
         await self.psp_return({
             'action': 'PAYMENT_RETURN', 'id': str(transfer.id), 'success': True
         })
         self.assertEqual(await payments.acount(), 1)
-        self.assertEqual(await notifications.acount(), 2)
+        self.assertEqual(await notifications.acount(), 3)
+        self.assertEqual(self.mail_post.call_count, len(emails) + mails_before)
 
     async def test_payment_return_rules(self):
         created = await self.create_transfer()

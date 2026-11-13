@@ -157,11 +157,17 @@ def check_messaging_access(user, transfer):
         check_participant(user, transfer)
 
 
+async def get_admin_ids():
+    admins = User.objects.filter(role__in=STAFF_ROLES, is_active=True)
+    admins = admins.values_list('id', flat=True)
+    admin_ids = {user_id async for user_id in admins}
+    return admin_ids
+
+
 async def get_messaging_receiver_ids(sender_id, transfer):
     '''Participants and all active ADMIN/STAFF users, except the sender.'''
-    staff = User.objects.filter(role__in=STAFF_ROLES, is_active=True)
-    staff_ids = {user_id async for user_id in staff.values_list('id', flat=True)}
-    return (get_participant_ids(transfer) | staff_ids) - {sender_id}
+    admin_ids = await get_admin_ids()
+    return (get_participant_ids(transfer) | admin_ids) - {sender_id}
 
 
 def get_transfers(user, expand=()):
@@ -247,12 +253,10 @@ async def create_notifications(
             message=notification.title
         )
     if settings.FCM_ENABLED and receiver_ids:
-        # Imported here: tasks imports utils
         from core.tasks import send_push
         push_data = {key: str(value) for key, value in (data or {}).items()}
         if action:
             push_data['action'] = str(action)
-        # .delay is sync (and runs inline when eager), keep it off the loop
         args = (receiver_ids, title, body, push_data)
         await s2a(send_push.delay)(*args)
     return created
@@ -264,11 +268,12 @@ async def notify_users(
     body,
     action,
     transfer,
-    sender_id=None
+    sender_id=None,
+    email_data=None
 ):
     '''Notification in each receiver's language, title/body are gettext_noop.'''
     receivers = User.objects.filter(id__in=receiver_ids, is_active=True)
-    async for receiver in receivers.only('id', 'language'):
+    async for receiver in receivers.only('id', 'language', 'email'):
         activate(receiver.language)
         await create_notifications(
             [receiver.id],
@@ -278,6 +283,35 @@ async def notify_users(
             data=get_transfer_data(transfer),
             sender_id=sender_id
         )
+        if email_data:
+            await send_email_to(receiver, email_data)
+
+
+# Email
+
+EMAIL_TRANSFER_FIELDS = (
+    'id', 'pickup_time', 'pickup_address', 'dropoff_address', 'price',
+    'currency'
+)
+
+
+def get_email_transfer(transfer):
+    return {field: getattr(transfer, field) for field in EMAIL_TRANSFER_FIELDS}
+
+
+async def send_email_to(receiver, email_data):
+    """
+    Sends a copy of email_data to receiver (needs email, language loaded),
+    subject (gettext_noop) is translated to the receiver's language.
+    """
+    from core.tasks import send_email
+    activate(receiver.language)
+    data = {
+        **email_data,
+        'subject': gettext(email_data.get('subject') or ''),
+        'to_user': {'email': receiver.email, 'language': receiver.language},
+    }
+    await s2a(send_email.delay)(data)
 
 
 # Auth
