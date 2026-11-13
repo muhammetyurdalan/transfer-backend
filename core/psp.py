@@ -123,7 +123,7 @@ async def process_payment_return(data):
     if not transfer_id.isdigit():
         return
     transfers = models.Transfer.objects.filter(pk=transfer_id)
-    transfer = await transfers.afirst()
+    transfer = await transfers.select_related('customer').afirst()
     if not transfer:
         return
     if transfer.status != Status.PENDING:
@@ -152,14 +152,24 @@ async def process_payment_return(data):
     await transaction.asave()
     args = (None, Action.PAYMENT_SUCCESS, customer_ids)
     await utils.broadcast(*args, **action_kwargs)
+    admin_ids = await utils.get_admin_ids()
+    receiver_ids = list(admin_ids | {transfer.operator_id})
+    subject = gettext_noop('New Transfer')
+    email_data = {
+        'action': 'transfer_accepted',
+        'subject': subject,
+        'transfer': utils.get_email_transfer(transfer),
+    }
     await utils.notify_users(
-        [transfer.operator_id],
-        gettext_noop('New Transfer'),
+        receiver_ids,
+        subject,
         gettext_noop('Transfer #%(id)s is paid and waiting for a driver'),
         Action.TRANSFER_ACCEPTED,
-        transfer
+        transfer,
+        email_data=email_data
     )
-    args = (None, Action.TRANSFER_ACCEPTED, [transfer.operator_id])
+    await utils.send_email_to(transfer.customer, email_data)
+    args = (None, Action.TRANSFER_ACCEPTED, receiver_ids)
     await utils.broadcast(*args, **action_kwargs)
 
 
