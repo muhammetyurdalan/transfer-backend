@@ -22,6 +22,7 @@ ZERO = models.ZERO
 EDITABLE_STATUSES = [Status.PENDING]
 ASSIGNABLE_STATUSES = [Status.ACCEPTED]
 CANCELLABLE_STATUSES = [Status.PENDING, Status.ACCEPTED]
+DELETABLE_STATUSES = [Status.EXPIRED, Status.WITHDRAWN]
 TIPPABLE_STATUSES = [Status.COMPLETED]
 STATUS_TRANSITIONS = {
     Status.ACCEPTED: Status.STARTED,
@@ -514,6 +515,21 @@ class Mutation:
         args = (user.id, action, receiver_ids)
         await utils.broadcast(*args, transfer_id=str(transfer.id))
         return transfer
+
+    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
+    async def delete_transfer(
+        root, info: Info,
+        id: sb.ID
+    ) -> outputs.SuccessResponse:
+        """
+        Only EXPIRED and WITHDRAWN transfers (never paid) can be deleted
+        (ERR014). Legs, messages and transactions are deleted with it.
+        """
+        user = info.context['user']
+        transfer = await get_transfer(user, id, DELETABLE_STATUSES)
+        await transfer.adelete()
+        return outputs.SuccessResponse(success=True)
 
     @sb.mutation(description='CUSTOMER')
     @permission_required('CUSTOMER')

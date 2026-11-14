@@ -1,4 +1,8 @@
-from django.db.models import Q, Sum
+from django.db.models import (
+    Case, DateTimeField, F, IntegerField, Q, QuerySet, Sum, Value, When
+)
+from django.db.models.expressions import OrderBy
+from django.utils import timezone
 import strawberry as sb
 import strawberry_django as sbd
 from datetime import datetime
@@ -7,6 +11,7 @@ from django.db.models.fields.files import FieldFile
 from strawberry import Info
 from strawberry.permission import BasePermission, PermissionExtension
 from strawberry_django.fields.types import field_type_map
+from strawberry_django.ordering import Ordering
 from typing import Any, List, Optional
 from core import enums, models, utils
 from core.decorators import get_user
@@ -392,6 +397,39 @@ class TransferOrder:
     id: sb.auto
     pickup_time: sb.auto
     created_at: sb.auto
+
+    @sbd.order_field(
+        description='Closeness to now. ASC: upcoming first (soonest first), '
+        'then past (most recent first). DESC: the reverse.'
+    )
+    def pickup_proximity(
+        self, info: Info, queryset: QuerySet, value: Ordering, prefix: str
+    ) -> tuple[QuerySet, list[OrderBy]]:
+        field = f'{prefix}pickup_time'
+        upcoming = Q(**{f'{field}__gte': timezone.now()})
+        queryset = queryset.alias(
+            _pickup_past=Case(
+                When(upcoming, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            ),
+            _pickup_upcoming=Case(
+                When(upcoming, then=F(field)),
+                default=None,
+                output_field=DateTimeField(),
+            ),
+        )
+        if value.name.startswith('ASC'):
+            return queryset, [
+                F('_pickup_past').asc(),
+                F('_pickup_upcoming').asc(nulls_last=True),
+                F(field).desc(nulls_last=True),
+            ]
+        return queryset, [
+            F('_pickup_past').desc(),
+            F('_pickup_upcoming').desc(nulls_last=True),
+            F(field).asc(nulls_last=True),
+        ]
 
 
 @sbd.type(models.Leg, exclude=['transfer'])

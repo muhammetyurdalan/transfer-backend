@@ -104,6 +104,9 @@ mutation($data: UpdateTransferStatus!) {{
 CANCEL_TRANSFER = f'''
 mutation($id: ID!) {{ cancelTransfer(id: $id) {{ {TRANSFER_FIELDS} }} }}
 '''
+DELETE_TRANSFER = '''
+mutation($id: ID!) { deleteTransfer(id: $id) { success } }
+'''
 TIP_DRIVER = '''
 mutation($data: TipDriver!) { tipDriver(data: $data) { paymentLink } }
 '''
