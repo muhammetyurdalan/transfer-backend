@@ -10,6 +10,8 @@ FERNET_KEY = 'PrfC6-ryvvydMXHK6qp8cCLvYkLu-CaRwE7hmxCd6t4='
 PSP_MS_URL = 'https://psp.test'
 MAIL_MS_URL = 'https://mail.test/mail/v1/sendTransferEmail'
 MS_ACCESS_TOKEN = 'test-ms-access-token'
+GOOGLE_CLIENT_IDS = ['test-google-client-id']
+MICROSOFT_CLIENT_IDS = ['test-microsoft-client-id']
 
 
 # Databases

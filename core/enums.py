@@ -84,6 +84,13 @@ class Language(TextChoices):
 
 
 @enum
+class SocialProvider(TextChoices):
+    GOOGLE = 'GOOGLE'
+    APPLE = 'APPLE'
+    MICROSOFT = 'MICROSOFT'
+
+
+@enum
 class Currency(TextChoices):
     USD = 'USD'
     EUR = 'EUR'
