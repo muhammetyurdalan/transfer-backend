@@ -4,7 +4,7 @@ from django.conf import settings
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-from django.utils.translation import activate, gettext
+from django.utils.translation import activate, get_language, gettext
 from fcm_django.models import FCMDevice
 from json import dumps
 from secrets import randbelow
@@ -14,7 +14,7 @@ from strawberry import Info
 from strawberry.exceptions import StrawberryGraphQLError as Error
 from strawberry_django.pagination import OffsetPaginationInput
 from typing import AsyncGenerator, List, Optional
-from core import enums, inputs, models, outputs, tasks, utils
+from core import enums, inputs, models, outputs, social, tasks, utils
 from core.decorators import append_user, permission_required
 from core.schemas.invitation import get_pending_invitation
 
@@ -87,6 +87,17 @@ def check_password(password, user=None):
         raise Error(dumps({'code': 'ERR012'}))
 
 
+async def accept_invitations(user):
+    """A new customer closes the PENDING invitations of its email."""
+    invitations = models.Invitation.objects.filter(
+        receiver_email=user.email, status=enums.InvitationStatus.PENDING
+    )
+    await invitations.aupdate(
+        receiver=user, status=enums.InvitationStatus.ACCEPTED,
+        updated_at=timezone.now()
+    )
+
+
 async def sign_up(info, data, role):
     decoded_data = get_validated_data(data.secret)
     email = decoded_data['email']
@@ -110,13 +121,7 @@ async def sign_up(info, data, role):
     user.set_password(data.password)
     await user.asave()
     if role == enums.Role.CUSTOMER:
-        invitations = models.Invitation.objects.filter(
-            receiver_email=email, status=enums.InvitationStatus.PENDING
-        )
-        await invitations.aupdate(
-            receiver=user, status=enums.InvitationStatus.ACCEPTED,
-            updated_at=timezone.now()
-        )
+        await accept_invitations(user)
     token = utils.create_token(user.email)
     append_user(info.context, user)
     return outputs.SignInResponse(user=user, token=token)
@@ -222,6 +227,38 @@ class Mutation:
         assert user, dumps({'code': 'ERR010'})
         password_valid = await s2a(user.check_password)(data.password)
         assert password_valid, dumps({'code': 'ERR010'})
+        token = utils.create_token(user.email)
+        append_user(info.context, user)
+        return outputs.SignInResponse(user=user, token=token)
+
+    @sb.mutation
+    async def social_sign_in(
+        root, info: Info,
+        data: inputs.SocialSignIn
+    ) -> outputs.SignInResponse:
+        """Signs in by the provider's verified email, a new email becomes a
+        PENDING CUSTOMER without password and phone. Inactive users: ERR010."""
+        profile = await social.verify_id_token(
+            data.provider, data.id_token, data.nonce
+        )
+        email = utils.normalize_email(profile['email'])
+        user = await manager.filter(email=email).afirst()
+        if user:
+            assert user.is_active, dumps({'code': 'ERR010'})
+        else:
+            language = get_language()
+            if language not in enums.Language.values:
+                language = enums.Language.EN
+            user = User(
+                email=email,
+                role=enums.Role.CUSTOMER,
+                first_name=(data.first_name or profile['first_name'])[:50],
+                last_name=(data.last_name or profile['last_name'])[:50],
+                language=language,
+            )
+            user.set_unusable_password()
+            await user.asave()
+            await accept_invitations(user)
         token = utils.create_token(user.email)
         append_user(info.context, user)
         return outputs.SignInResponse(user=user, token=token)

@@ -64,6 +64,17 @@ class CreateAdminUser:
 
 
 @sb.input
+class SocialSignIn:
+    provider: enums.SocialProvider
+    id_token: str = required('OpenID Connect id_token from the provider')
+    nonce: str = required('nonce sent to the provider, must match the token')
+    first_name: Optional[str] = optional(
+        '50 chars max, Apple sends the name only on first sign-in'
+    )
+    last_name: Optional[str] = optional('50 chars max')
+
+
+@sb.input
 class SignIn:
     email: str = required('100 chars max')
     password: str = required('128 chars max')

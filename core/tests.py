@@ -18,6 +18,11 @@ URL = '/graphql/'
 PSP_RETURN_URL = '/psp-return/'
 PASSWORD = 'S3cure-Passw0rd!'
 
+SOCIAL_SIGN_IN = '''
+mutation($data: SocialSignIn!) {
+  socialSignIn(data: $data) { token user { email role firstName lastName } }
+}
+'''
 GET_CODE = '''
 mutation($data: GetCode!) { getCode(data: $data) { secret } }
 '''
@@ -504,6 +509,161 @@ class UserTests(GraphQLTestCase):
         result = await self.sign_up('x@example.com', role='OPERATOR')
         self.assertIn('errors', result)
         self.assertFalse(await User.objects.filter(email='x@example.com').aexists())
+
+
+class SocialSignInTests(GraphQLTestCase):
+    """Tokens are signed with a local RSA key, the JWKS fetch is patched."""
+
+    def setUp(self):
+        super().setUp()
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        self.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        jwks = patch(
+            'core.social.signing_key', return_value=self.key.public_key()
+        )
+        jwks.start()
+        self.addCleanup(jwks.stop)
+
+    def id_token(self, key=None, **claims):
+        from jwt import encode
+        now = timezone.now()
+        payload = {
+            'iss': 'https://accounts.google.com', 'aud': 'test-google-client-id',
+            'sub': '1234567890', 'iat': now, 'exp': now + timedelta(hours=1),
+            'nonce': 'n-1', 'email': 'Social@Example.com', 'email_verified': True,
+            'given_name': 'Grace', 'family_name': 'Hopper', **claims
+        }
+        payload = {k: v for k, v in payload.items() if v is not None}
+        return encode(payload, key or self.key, algorithm='RS256')
+
+    async def sign_in(self, token, nonce='n-1', **data):
+        data = {'provider': 'GOOGLE', 'idToken': token, 'nonce': nonce, **data}
+        return await self.execute(SOCIAL_SIGN_IN, {'data': data})
+
+    async def test_new_user_is_pending_customer(self):
+        result = await self.sign_in(self.id_token())
+        response = self.ok(result, 'socialSignIn')
+        self.assertEqual(response['user'], {
+            'email': 'social@example.com', 'role': 'CUSTOMER',
+            'firstName': 'Grace', 'lastName': 'Hopper'
+        })
+        user = await User.objects.aget(email='social@example.com')
+        self.assertEqual((user.status, user.phone), ('PENDING', ''))
+        self.assertFalse(user.has_usable_password())
+        # The returned token works like signIn's token
+        result = await self.execute('query { user { email } }', user=user)
+        self.assertTrue(response['token'])
+        self.assertEqual(self.ok(result, 'user')['email'], 'social@example.com')
+        # Second sign-in finds the same user
+        result = await self.sign_in(self.id_token())
+        self.ok(result, 'socialSignIn')
+        self.assertEqual(
+            await User.objects.filter(email='social@example.com').acount(), 1
+        )
+
+    async def test_existing_user_keeps_role_and_name(self):
+        token = self.id_token(email='driver@example.com')
+        result = await self.sign_in(token, firstName='Other')
+        user = self.ok(result, 'socialSignIn')['user']
+        self.assertEqual((user['role'], user['firstName']), ('DRIVER', 'driver'))
+
+    async def test_name_from_input_overrides_token(self):
+        token = self.id_token(given_name=None, family_name=None)
+        result = await self.sign_in(token, firstName='Ada', lastName='Lovelace')
+        user = self.ok(result, 'socialSignIn')['user']
+        self.assertEqual((user['firstName'], user['lastName']), ('Ada', 'Lovelace'))
+
+    async def test_inactive_user(self):
+        self.customer.is_active = False
+        await self.customer.asave()
+        result = await self.sign_in(self.id_token(email='customer@example.com'))
+        self.assertEqual(self.error_code(result), 'ERR010')
+
+    async def test_accepts_pending_invitation(self):
+        self.ok(await self.execute(
+            INVITE_CUSTOMER, {'data': {'email': 'social@example.com'}}, self.operator
+        ), 'inviteCustomer')
+        self.ok(await self.sign_in(self.id_token()), 'socialSignIn')
+        invitation = await models.Invitation.objects.aget()
+        self.assertEqual(invitation.status, 'ACCEPTED')
+
+    async def test_invalid_tokens(self):
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        past = timezone.now() - timedelta(hours=2)
+        invalid = [
+            self.id_token(key=other_key),
+            self.id_token(aud='someone-else'),
+            self.id_token(iss='https://evil.example.com'),
+            self.id_token(iat=past - timedelta(hours=1), exp=past),
+            self.id_token(email_verified=False),
+            self.id_token(email=None),
+            'not-a-jwt',
+        ]
+        for token in invalid:
+            with self.subTest(token=token[:20]):
+                result = await self.sign_in(token)
+                self.assertEqual(self.error_code(result), 'ERR045')
+        result = await self.sign_in(self.id_token(), nonce='other')
+        self.assertEqual(self.error_code(result), 'ERR045')
+        self.assertFalse(
+            await User.objects.filter(email='social@example.com').aexists()
+        )
+
+    def microsoft_token(self, tid=None, **claims):
+        from core.social import MSA_TENANT
+        tid = tid or MSA_TENANT
+        defaults = {
+            'iss': f'https://login.microsoftonline.com/{tid}/v2.0',
+            'aud': 'test-microsoft-client-id', 'tid': tid, 'email_verified': None,
+            'given_name': None, 'family_name': None, 'name': 'Alan Mathison Turing',
+        }
+        return self.id_token(**{**defaults, **claims})
+
+    async def test_microsoft_personal_account(self):
+        result = await self.sign_in(self.microsoft_token(), provider='MICROSOFT')
+        user = self.ok(result, 'socialSignIn')['user']
+        self.assertEqual(
+            (user['email'], user['firstName'], user['lastName']),
+            ('social@example.com', 'Alan', 'Mathison Turing')
+        )
+
+    async def test_microsoft_work_account_needs_verified_domain(self):
+        tenant = '11111111-2222-3333-4444-555555555555'
+        result = await self.sign_in(
+            self.microsoft_token(tenant), provider='MICROSOFT'
+        )
+        self.assertEqual(self.error_code(result), 'ERR045')
+        result = await self.sign_in(
+            self.microsoft_token(tenant, xms_edov=True), provider='MICROSOFT'
+        )
+        self.ok(result, 'socialSignIn')
+
+    async def test_microsoft_invalid_tokens(self):
+        other = '11111111-2222-3333-4444-555555555555'
+        invalid = [
+            # Issuer of another tenant than the token's tid
+            self.microsoft_token(
+                iss=f'https://login.microsoftonline.com/{other}/v2.0'
+            ),
+            self.microsoft_token(tid=None, iss='https://accounts.google.com'),
+            # Google audience is not accepted for Microsoft
+            self.microsoft_token(aud='test-google-client-id'),
+        ]
+        for token in invalid:
+            with self.subTest():
+                result = await self.sign_in(token, provider='MICROSOFT')
+                self.assertEqual(self.error_code(result), 'ERR045')
+        # Google token with Microsoft as provider
+        result = await self.sign_in(self.id_token(), provider='MICROSOFT')
+        self.assertEqual(self.error_code(result), 'ERR045')
+
+    async def test_unconfigured_provider(self):
+        result = await self.sign_in(self.id_token(), provider='APPLE')
+        self.assertEqual(self.error_code(result), 'ERR030')
+        with override_settings(GOOGLE_CLIENT_IDS=[]):
+            result = await self.sign_in(self.id_token())
+        self.assertEqual(self.error_code(result), 'ERR030')
 
 
 class InvitationTests(GraphQLTestCase):

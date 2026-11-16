@@ -124,10 +124,15 @@ CHANNEL_LAYERS = {
 # Microservices (payment, mail), both use MS_ACCESS_TOKEN
 
 PSP_MS_URL = env('PSP_MS_URL', '')
-# Full endpoint, e.g. https://<host>/mail/v1/sendTransferEmail
 MAIL_MS_URL = env('MAIL_MS_URL', '')
 MS_ACCESS_TOKEN = env('MS_ACCESS_TOKEN', '')
 FRONTEND_URL = env('FRONTEND_URL', 'http://localhost:5173').rstrip('/')
+
+
+# Social sign-in: OAuth client ids (id_token audience), comma separated
+
+GOOGLE_CLIENT_IDS = env_list('GOOGLE_CLIENT_IDS')
+MICROSOFT_CLIENT_IDS = env_list('MICROSOFT_CLIENT_IDS')
 APP_NAME = env('APP_NAME', 'Cihan Vip Transfers')
 INVITATION_EXPIRE_DAYS = int(env('INVITATION_EXPIRE_DAYS', '7'))
 
