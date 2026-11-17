@@ -345,8 +345,9 @@ class Mutation:
         data: inputs.UpdateTransfer
     ) -> outputs.TransferResponse:
         """
-        Only while PENDING. A route change clears the chosen vehicle category
-        and expires its payment link, the customer chooses again.
+        Only while PENDING. A route change (route fields or legs) clears the
+        chosen vehicle category and expires its payment link, the customer
+        chooses again. Given legs replace all of the transfer's legs.
         """
         user = info.context['user']
         expand = ['customer', 'state']
@@ -372,16 +373,24 @@ class Mutation:
                 transfer=transfer,
                 vehicle_options=await get_vehicle_options(transfer)
             )
-        ignored = ['id', *DISTRICT_NAME_FIELDS, *DRIVER_FIELDS]
+        ignored = ['id', 'legs', *DISTRICT_NAME_FIELDS, *DRIVER_FIELDS]
         utils.set_attributes(transfer, data, ignored=ignored, set_nulls=False)
         check_transfer(transfer)
         check_pickup_time(transfer.pickup_time)
+        # legs given (even []): the stops are replaced
+        legs_given = data.legs is not sb.UNSET and data.legs is not None
+        if legs_given:
+            check_legs(data.legs)
         if any(fields.get(key) for key in DISTRICT_NAME_FIELDS):
             await set_districts(transfer, data)
-        if any(fields.get(key) is not None for key in ROUTE_FIELDS):
+        route_changed = any(fields.get(key) is not None for key in ROUTE_FIELDS)
+        if route_changed or legs_given:
             await psp.expire_payment_link(transfer)
             clear_vehicle_selection(transfer)
         await transfer.asave()
+        if legs_given:
+            await transfer.legs.all().adelete()
+            await set_legs(transfer, data.legs)
         activate(user.language)
         vehicle_options = await get_vehicle_options(transfer)
         return outputs.TransferResponse(
