@@ -336,6 +336,9 @@ class UpdateTransfer:
     passenger_phone: Optional[str] = optional('20 chars max')
     flight_number: Optional[str] = optional('10 chars max')
     note: Optional[str] = optional()
+    legs: Optional[List[CreateLeg]] = optional(
+        'replaces all legs (stops), [] removes them; counts as a route change'
+    )
     driver_name: Optional[str] = optional(
         'OPERATOR, ADMIN, STAFF. 100 chars max, '
         'ignored if a driver is assigned'

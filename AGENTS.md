@@ -73,7 +73,8 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 ### 4.0.1 Ara duraklar (`Leg`)
 - `createTransfer` opsiyonel `legs` listesi alır (`CreateLeg`: başlangıç/bitiş konum, adres ve zaman, `order`, `route`). Gelirse transferle birlikte kaydedilir, `Transfer.legs` olarak `order` sırasıyla döner.
 - `order` verilmezse listedeki sırası (0'dan) kullanılır. `startTime < endTime` olmalı ve `order` negatif olamaz, değilse `ERR030`. Leg'ler transfer kaydedilmeden önce doğrulanır, yani geçersiz leg varsa transfer de oluşmaz.
-- Leg'ler fiyatı, uygunluğu ve sürücü müsaitliğini etkilemez. `updateTransfer` leg'leri değiştirmez.
+- Leg'ler fiyatı, uygunluğu ve sürücü müsaitliğini etkilemez.
+- `updateTransfer` de opsiyonel `legs` alır: verilirse (boş liste dahil) transferin tüm leg'leri silinip yenileri yazılır (`[]` tüm durakları kaldırır), verilmezse dokunulmaz. Aynı doğrulama (`ERR030`, geçersizse hiçbir şey değişmez), sadece PENDING (`ERR014`). Leg vermek rota değişikliği sayılır: ödeme linki expire edilir, araç seçimi sıfırlanır.
 
 ### 4.1 Araç kategorisi ve fiyat
 - `VehicleCategory`: `max_passengers`, `max_luggage`, `child_seat_capacity`, `is_wheelchair_accessible`, `base_fare`, `per_km_price`, `per_minute_price`, `minimum_fare`, `currency`, `order`, `is_active`. `name`/`description` çok dilli (`name_en`, `name_tr`, `name_de`, `name_ru`; boş olan dil `en`'e düşer).

@@ -1255,6 +1255,65 @@ class TransferTests(GraphQLTestCase):
         self.assertEqual(self.error_code(result), 'ERR030')
         self.assertEqual(await models.Transfer.objects.acount(), 2)
 
+    async def test_update_transfer_replaces_legs(self):
+        start = timezone.now() + timedelta(days=2)
+
+        def leg(address, hours):
+            return {
+                'startLatitude': '41.275300', 'startLongitude': '28.751900',
+                'startAddress': f'{address} start',
+                'startTime': (start + timedelta(hours=hours)).isoformat(),
+                'endLatitude': '41.036900', 'endLongitude': '28.985000',
+                'endAddress': address,
+                'endTime': (start + timedelta(hours=hours + 1)).isoformat(),
+            }
+
+        created = await self.create_transfer(legs=[leg('Old', 0), leg('Taksim', 1)])
+        id = created['transfer']['id']
+        # A chosen vehicle is cleared by a route change
+        await models.Transfer.objects.filter(pk=id).aupdate(
+            vehicle_category=self.sedan, price='500.00', currency='TRY'
+        )
+        query = UPDATE_TRANSFER.replace(
+            'transfer {', 'transfer { legs { order endAddress }', 1
+        )
+        legs = [leg('A', 0), leg('B', 1), leg('Taksim', 2)]
+        data = {'id': id, 'legs': legs, 'distance': '45.0', 'duration': 60}
+        result = await self.execute(query, {'data': data}, self.customer)
+        transfer = self.ok(result, 'updateTransfer')['transfer']
+        self.assertEqual(transfer['legs'], [
+            {'order': 0, 'endAddress': 'A'},
+            {'order': 1, 'endAddress': 'B'},
+            {'order': 2, 'endAddress': 'Taksim'},
+        ])
+        saved = await models.Transfer.objects.aget(pk=id)
+        self.assertIsNone(saved.vehicle_category_id)
+        self.assertIsNone(saved.price)
+        # Not given: legs are kept
+        data = {'id': id, 'note': 'Call on arrival'}
+        result = await self.execute(query, {'data': data}, self.customer)
+        self.assertEqual(len(self.ok(result, 'updateTransfer')['transfer']['legs']), 3)
+        # Invalid leg: nothing changes
+        bad = {**leg('Bad', 0), 'endTime': start.isoformat()}
+        result = await self.execute(
+            query, {'data': {'id': id, 'legs': [bad]}}, self.customer
+        )
+        self.assertEqual(self.error_code(result), 'ERR030')
+        self.assertEqual(
+            await models.Leg.objects.filter(transfer_id=id).acount(), 3
+        )
+        # [] removes all stops
+        result = await self.execute(
+            query, {'data': {'id': id, 'legs': []}}, self.customer
+        )
+        self.assertEqual(self.ok(result, 'updateTransfer')['transfer']['legs'], [])
+        # Only while PENDING
+        await models.Transfer.objects.filter(pk=id).aupdate(status='ACCEPTED')
+        result = await self.execute(
+            query, {'data': {'id': id, 'legs': [leg('A', 0)]}}, self.customer
+        )
+        self.assertEqual(self.error_code(result), 'ERR014')
+
     async def test_only_accepted_operators_get_transfers(self):
         await User.objects.filter(pk=self.operator.id).aupdate(status='PENDING')
         await self.other_operator.districts.aset([self.beyoglu])
