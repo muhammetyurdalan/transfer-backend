@@ -1,15 +1,25 @@
 from datetime import timedelta
 from django.apps import apps
 from django.contrib.auth.base_user import BaseUserManager
-from django.db.models import Exists, OuterRef, QuerySet
+from django.db.models import (
+    F, Exists, ExpressionWrapper, IntegerField, OuterRef, QuerySet, Value
+)
+from django.db.models.functions import Greatest
 
 
-# Transfers in these statuses keep their driver busy
 BUSY_STATUSES = ['ACCEPTED', 'STARTED']
 
 
+def ceil_div(amount, field):
+    """ceil(amount / field) with integer division in the database."""
+    return ExpressionWrapper(
+        (Value(amount) + F(field) - 1) / F(field),
+        output_field=IntegerField()
+    )
+
+
 def get_model(name):
-    # models.py imports this module, so models are resolved lazily
+    """Get a model from the core app by name."""
     return apps.get_model('core', name)
 
 
@@ -64,6 +74,38 @@ class VehicleCategoryQuerySet(QuerySet):
         if transfer.needs_wheelchair:
             categories = categories.filter(is_wheelchair_accessible=True)
         return categories
+    
+    def with_counts(self, transfer):
+        """
+        Active categories that fit the transfer's per-vehicle needs, annotated
+        with `count`: how many vehicles of the category the transfer needs to
+        carry all passengers and luggage.
+        """
+        categories = self.filter(
+            is_active=True,
+            max_passengers__gt=0,
+            child_seat_capacity__gte=transfer.child_seat_count
+        )
+        if transfer.luggage_count:
+            categories = categories.filter(max_luggage__gt=0)
+        if transfer.needs_wheelchair:
+            categories = categories.filter(is_wheelchair_accessible=True)
+        counts = [ceil_div(transfer.passenger_count, 'max_passengers')]
+        if transfer.luggage_count:
+            counts.append(ceil_div(transfer.luggage_count, 'max_luggage'))
+        count = Greatest(*counts) if len(counts) > 1 else counts[0]
+        return categories.annotate(count=count)
+
+    def options_for(self, transfer, multiple_vehicles):
+        """
+        Vehicle options of the transfer, annotated with `count`. With multiple
+        vehicles (State.allow_multiple_vehicles) a category may need several
+        vehicles, otherwise only categories that fit in one vehicle are listed.
+        """
+        if multiple_vehicles:
+            return self.with_counts(transfer)
+        one = Value(1, output_field=IntegerField())
+        return self.eligible_for(transfer).annotate(count=one)
 
 
 class VehicleQuerySet(QuerySet):

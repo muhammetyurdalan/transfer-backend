@@ -134,6 +134,7 @@ class CreateState:
         'penalty rate (0-1) per hour threshold, same length as hours'
     )
     driver_buffer_minutes: Optional[int] = optional('default 30')
+    allow_multiple_vehicles: Optional[bool] = optional('default false')
 
 
 @sb.input
@@ -149,6 +150,7 @@ class UpdateState:
         'replaces the list, send with customerImposedHours'
     )
     driver_buffer_minutes: Optional[int] = optional()
+    allow_multiple_vehicles: Optional[bool] = optional()
 
 
 @sb.input
@@ -350,6 +352,9 @@ class UpdateTransfer:
 class PayTransfer:
     id: sb.ID
     vehicle_category_id: sb.ID = required('one of vehicleOptions')
+    vehicle_count: Optional[int] = optional(
+        "At least the option's count, which is the default"
+    )
 
 
 @sb.input

@@ -47,12 +47,31 @@ async def get_transfer(user, id, statuses=None, expand=()):
     return transfer
 
 
+def allows_multiple_vehicles(transfer):
+    """
+    State.allow_multiple_vehicles of the transfer's state, which must be
+    loaded (expand=['state'] or set_districts).
+    """
+    return bool(transfer.state_id and transfer.state.allow_multiple_vehicles)
+
+
+def get_vehicle_categories(transfer):
+    multiple = allows_multiple_vehicles(transfer)
+    manager = models.VehicleCategory.objects
+    return manager.options_for(transfer, multiple), multiple
+
+
 async def get_vehicle_options(transfer):
-    """Eligible vehicle categories, each priced for this route."""
-    categories = models.VehicleCategory.objects.eligible_for(transfer)
+    """
+    Eligible vehicle categories, each priced for this route, with the number
+    of vehicles of the category the transfer needs (always 1 unless the
+    state allows multiple vehicles).
+    """
+    categories, _ = get_vehicle_categories(transfer)
     return [
         outputs.VehicleOption(
             vehicle_category=category,
+            count=category.count,
             distance=transfer.distance,
             duration=transfer.duration,
             price=category.get_price(transfer.distance, transfer.duration),
@@ -100,7 +119,7 @@ class Query:
         transfer_id: sb.ID
     ) -> List[outputs.VehicleOption]:
         user = info.context['user']
-        transfer = await get_transfer(user, transfer_id)
+        transfer = await get_transfer(user, transfer_id, expand=['state'])
         activate(user.language)
         return await get_vehicle_options(transfer)
     
@@ -198,7 +217,12 @@ async def set_districts(transfer, data):
     assert pickup or dropoff, dumps({'code': 'ERR035'})
     transfer.pickup_district_id = pickup['id'] if pickup else None
     transfer.dropoff_district_id = dropoff['id'] if dropoff else None
-    transfer.state_id = (pickup or dropoff)['city__state_id']
+    state_id = (pickup or dropoff)['city__state_id']
+    # The state is loaded once here (get_vehicle_options reads it), and only
+    # again when the districts move the transfer to another state
+    loaded = models.Transfer.state.is_cached(transfer)
+    if state_id != transfer.state_id or not loaded:
+        transfer.state = await models.State.objects.aget(pk=state_id)
     await set_operator(transfer)
 
 
@@ -268,6 +292,7 @@ def get_driver_name(driver):
 
 def clear_vehicle_selection(transfer):
     transfer.vehicle_category = None
+    transfer.vehicle_count = 1
     transfer.price = None
     transfer.currency = None
 
@@ -324,7 +349,7 @@ class Mutation:
         and expires its payment link, the customer chooses again.
         """
         user = info.context['user']
-        expand = ['customer']
+        expand = ['customer', 'state']
         fields = {
             key: value for key, value in utils.get_fields(data).items()
             if value is not None
@@ -371,20 +396,30 @@ class Mutation:
         data: inputs.PayTransfer
     ) -> outputs.PaymentResponse:
         """
-        Sets the chosen vehicle category and its price, then returns a payment
-        link. The transfer becomes ACCEPTED when the payment service reports a
-        successful payment (psp-return), then operators are notified.
+        Sets the chosen vehicle category, vehicle count (at least the
+        category's count in vehicleOptions, only 1 unless the state allows
+        multiple vehicles) and price (unit price * count), then returns a
+        payment link. The transfer becomes ACCEPTED when the payment service
+        reports a successful payment (psp-return), then operators are
+        notified.
         """
         user = info.context['user']
         expand = ['customer', 'state']
         transfer = await get_transfer(user, data.id, EDITABLE_STATUSES, expand)
         check_pickup_time(transfer.pickup_time)
-        categories = models.VehicleCategory.objects.eligible_for(transfer)
+        categories, multiple = get_vehicle_categories(transfer)
         categories = categories.filter(pk=data.vehicle_category_id)
         category = await categories.afirst()
         assert category, dumps({'code': 'ERR025'})
+        vehicle_count = data.vehicle_count
+        if vehicle_count in (sb.UNSET, None):
+            vehicle_count = category.count
+        assert vehicle_count >= category.count, dumps({'code': 'ERR046'})
+        assert multiple or vehicle_count == 1, dumps({'code': 'ERR047'})
+        price = category.get_price(transfer.distance, transfer.duration)
         transfer.vehicle_category = category
-        transfer.price = category.get_price(transfer.distance, transfer.duration)
+        transfer.vehicle_count = vehicle_count
+        transfer.price = price * vehicle_count
         transfer.currency = category.currency
         await psp.get_payment_link(transfer)
         await transfer.asave()

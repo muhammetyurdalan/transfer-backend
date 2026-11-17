@@ -49,7 +49,7 @@ Kayıt e-posta doğrulamalı (`getCode` → `validateCode`) iki mutation'la yap�
 ```
 createTransfer ──► PENDING + vehicleOptions (uygun kategoriler, her biri fiyatlı)
    │ (updateTransfer: rota/ihtiyaç değişirse seçim sıfırlanır, link expire edilir)
-payTransfer(vehicleCategoryId) ──► kategori + fiyat transfere yazılır, /createPaymentLink
+payTransfer(vehicleCategoryId, vehicleCount?) ──► kategori + araç sayısı + fiyat (birim × sayı) transfere yazılır, /createPaymentLink
    │
 psp-return PAYMENT_RETURN success ──► PAID, PAYMENT transaction, tüm OPERATOR'lere bildirim (TRANSFER_PAID)
    │
@@ -68,7 +68,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - `updateTransfer` bu isimlerden birini alırsa yeniden hesaplanır, verilmeyen taraf mevcut district'ini korur.
 - Aynı isimde birden fazla district varsa (ör. "Merkez") ilk eşleşen (alfabetik) alınır. Şehir adı alınmadığı için ayırt edilemez.
 - **City** (`schemas/city.py`) ve **District** (`schemas/district.py`): `city`/`cities`, `district`/`districts` token'sız çalışır (public). Pasif district'leri sadece ADMIN/STAFF görür. `districts` filtresinde `stateId` var. `create`/`update`/`delete` ADMIN, STAFF. Şehir silmek district'lerini de siler. Transferde kullanılan district/şehir silinemez (`ERR041`/`ERR040`), district pasifleştirilmeli. Public sorgular `state`'i açtığı için `State.psp` ve `driverBufferMinutes` sadece ADMIN/STAFF/OPERATOR'e görünür.
-- **State** (`schemas/state.py`): `state`/`states` (ADMIN, STAFF, OPERATOR), `createState`/`updateState`/`deleteState` (ADMIN, STAFF). `code` büyük/küçük harf duyarsız benzersiz (`ERR038`). `customerImposedHours` artan pozitif saatler, `customerImposedRates` aynı uzunlukta 0–1 arası oranlar (`ERR030`), oranlar string olarak saklanır. Silme şehir ve district'leri de siler, transfer bağlıysa `ERR037`.
+- **State** (`schemas/state.py`): `state`/`states` (ADMIN, STAFF, OPERATOR), `createState`/`updateState`/`deleteState` (ADMIN, STAFF). `allowMultipleVehicles` çoklu araç seçimini açar (§4.1), public (müşteri `transfer.state` üzerinden okur). `code` büyük/küçük harf duyarsız benzersiz (`ERR038`). `customerImposedHours` artan pozitif saatler, `customerImposedRates` aynı uzunlukta 0–1 arası oranlar (`ERR030`), oranlar string olarak saklanır. Silme şehir ve district'leri de siler, transfer bağlıysa `ERR037`.
 
 ### 4.0.1 Ara duraklar (`Leg`)
 - `createTransfer` opsiyonel `legs` listesi alır (`CreateLeg`: başlangıç/bitiş konum, adres ve zaman, `order`, `route`). Gelirse transferle birlikte kaydedilir, `Transfer.legs` olarak `order` sırasıyla döner.
@@ -80,6 +80,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - **Uygunluk** (`VehicleCategoryQuerySet.eligible_for`): aktif ve `passenger_count`, `luggage_count`, `child_seat_count` kapasiteyi aşmıyor, `needs_wheelchair` ise erişilebilir.
 - **Fiyat** (`VehicleCategory.get_price`): `max(minimum_fare, base_fare + distance_km * per_km_price + duration_min * per_minute_price)`, 2 ondalık.
 - `distance` (km) ve `duration` (dk) istemciden gelir (harita SDK'sı), fiyat her zaman sunucuda hesaplanır.
+- **Araç sayısı** (`VehicleCategoryQuerySet.options_for`, `get_vehicle_categories`): transferin state'inde `allow_multiple_vehicles` (varsayılan `False`, `createState`/`updateState`) açıksa `with_counts` kullanılır: kapasiteyi aşan kategoriler de döner, `count` = `max(ceil(passenger_count / max_passengers), ceil(luggage_count / max_luggage))`. Kapalıysa (veya transferin state'i yoksa) `eligible_for` + `count=1`, yani sadece tek araca sığan kategoriler. Bayrak `transfer.state`'ten okunur (`allows_multiple_vehicles`, sorgu atmaz): çağıranlar state'i `expand=['state']` ile yükler, `createTransfer`/`updateTransfer`'da `set_districts` state değişince yenisini yükler. Çocuk koltuğu ve tekerlekli sandalye araç başına filtredir. `price` tek araç fiyatıdır. `payTransfer(vehicleCategoryId, vehicleCount?)` aynı listeyi kullanır: `vehicleCount` verilmezse kategorinin `count`'u, `count`'tan azsa `ERR046`, bayrak kapalıyken 1'den farklıysa `ERR047`. `Transfer.vehicle_count`'a yazılır, ödenen `price` = birim fiyat × `vehicle_count`. Seçim sıfırlanınca (`clear_vehicle_selection`) `vehicle_count` 1 olur. `assignDriver` hâlâ tek sürücü/araç atar.
 - `vehicleOptions(transferId)` aynı listeyi tekrar döner. İsimler kullanıcının dilinde döner. Public `vehicleCategories(language)` sorgusunda dil argümandan alınır.
 
 ### 4.2 Uygun sürücü sorgusu (`core/managers.py`)
@@ -134,14 +135,14 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR046**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR048**.
 
 | Aralık | Alan |
 |---|---|
 | ERR001–ERR004, ERR009–ERR012, ERR043–ERR045 | Auth, kullanıcı (ERR043: telefon zorunlu, ERR044: davet bulunamadı/kullanılmış, ERR045: sosyal giriş token'ı geçersiz) |
 | ERR013–ERR016, ERR035 | Transfer (ERR035: district bulunamadı) |
 | ERR017–ERR024 | Mesajlaşma |
-| ERR025–ERR029 | Araç kategorisi, araç |
+| ERR025–ERR029, ERR046–ERR047 | Araç kategorisi, araç (ERR046: araç sayısı kategorinin gereksiniminden az, ERR047: state çoklu araca izin vermiyor) |
 | ERR030 | Geçersiz parametre |
 | ERR031–ERR034, ERR042 | Ödeme (ERR042: iade zaten tamamlandı) |
 | ERR036–ERR038 | State |
