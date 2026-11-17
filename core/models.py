@@ -34,6 +34,10 @@ class State(models.Model):
         encoder=DjangoJSONEncoder
     )
     driver_buffer_minutes = models.PositiveSmallIntegerField(default=30)
+    allow_multiple_vehicles = models.BooleanField(
+        default=False,
+        help_text='Customers may book several vehicles of a category'
+    )
 
     class Meta:
         ordering = ['name']
@@ -336,6 +340,10 @@ class Transfer(models.Model):
     passenger_phone = models.CharField(max_length=20, blank=True)
     flight_number = models.CharField(max_length=10, blank=True)
     note = models.TextField(blank=True)
+    vehicle_count = models.PositiveSmallIntegerField(
+        default=1,
+        help_text='Vehicles of vehicle_category paid for'
+    )
     price = models.DecimalField(**DECIMAL_10, blank=True, null=True)
     currency = models.CharField(
         max_length=3,

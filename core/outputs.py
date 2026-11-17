@@ -490,6 +490,9 @@ class TransfersPaginated:
 @sb.type
 class VehicleOption:
     vehicle_category: VehicleCategory
+    count: int = sb.field(
+        description='Vehicles of this category the transfer needs'
+    )
     distance: Decimal
     duration: int
     price: Decimal

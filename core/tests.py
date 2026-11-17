@@ -52,7 +52,7 @@ TRANSFER_FIELDS = '''
   stateId pickupDistrictId dropoffDistrictId
 '''
 OPTION_FIELDS = '''
-  vehicleCategory { id name } distance duration price currency
+  vehicleCategory { id name } count distance duration price currency
 '''
 CREATE_TRANSFER = f'''
 mutation($data: CreateTransfer!) {{
@@ -217,7 +217,7 @@ mutation($id: ID!) { deleteDistrict(id: $id) { success } }
 '''
 STATE_FIELDS = '''
 id name code psp customerImposedHours customerImposedRates
-driverBufferMinutes
+driverBufferMinutes allowMultipleVehicles
 '''
 STATES = '''
 query { states(ordering: [{name: ASC}]) { count states { name code } } }
@@ -1048,6 +1048,7 @@ class StateTests(GraphQLTestCase):
         created = self.ok(result, 'createState')
         self.assertEqual(created['customerImposedRates'], ['1', '0.5'])
         self.assertEqual(created['driverBufferMinutes'], 30)
+        self.assertFalse(created['allowMultipleVehicles'])
         result = await self.execute(CREATE_STATE, {'data': data}, self.staff)
         self.assertEqual(self.error_code(result), 'ERR038')
         # Hours not ascending, rate out of range, length mismatch
@@ -1059,10 +1060,12 @@ class StateTests(GraphQLTestCase):
                 UPDATE_STATE, {'data': update}, self.admin
             )
             self.assertEqual(self.error_code(result), 'ERR030')
-        update = {'id': created['id'], 'driverBufferMinutes': 45}
+        update = {'id': created['id'], 'driverBufferMinutes': 45,
+                  'allowMultipleVehicles': True}
         result = await self.execute(UPDATE_STATE, {'data': update}, self.admin)
         updated = self.ok(result, 'updateState')
         self.assertEqual(updated['driverBufferMinutes'], 45)
+        self.assertTrue(updated['allowMultipleVehicles'])
         self.assertEqual(updated['customerImposedHours'], [2, 24])
         update = {'id': '0', 'name': 'X'}
         result = await self.execute(UPDATE_STATE, {'data': update}, self.admin)
@@ -1117,6 +1120,10 @@ class VehicleTests(GraphQLTestCase):
 
 
 class TransferTests(GraphQLTestCase):
+    async def allow_multiple_vehicles(self):
+        states = models.State.objects.filter(pk=self.turkey.pk)
+        await states.aupdate(allow_multiple_vehicles=True)
+
     async def test_create_transfer_requires_customer_phone(self):
         await User.objects.filter(pk=self.customer.pk).aupdate(phone='')
         self.customer.phone = ''
@@ -1149,9 +1156,26 @@ class TransferTests(GraphQLTestCase):
         self.assertEqual(Decimal(options['Van']['price']), Decimal('957.50'))
 
     async def test_vehicle_options_follow_transfer_needs(self):
+        # Single vehicle (default): only categories that fit in one vehicle
         created = await self.create_transfer(passengerCount=5)
-        names = [o['vehicleCategory']['name'] for o in created['vehicleOptions']]
-        self.assertEqual(names, ['Van'])
+        options = [
+            (o['vehicleCategory']['name'], o['count'])
+            for o in created['vehicleOptions']
+        ]
+        self.assertEqual(options, [('Van', 1)])
+        await self.allow_multiple_vehicles()
+        created = await self.create_transfer(passengerCount=5)
+        options = [
+            (o['vehicleCategory']['name'], o['count'])
+            for o in created['vehicleOptions']
+        ]
+        self.assertEqual(options, [('Sedan', 2), ('Van', 1), ('Accessible Van', 2)])
+        created = await self.create_transfer(passengerCount=2, luggageCount=10)
+        options = [
+            (o['vehicleCategory']['name'], o['count'])
+            for o in created['vehicleOptions']
+        ]
+        self.assertEqual(options, [('Sedan', 4), ('Van', 2), ('Accessible Van', 3)])
         created = await self.create_transfer(needsWheelchair=True)
         names = [o['vehicleCategory']['name'] for o in created['vehicleOptions']]
         self.assertEqual(names, ['Accessible Van'])
@@ -1313,7 +1337,7 @@ class TransferTests(GraphQLTestCase):
     async def test_pay_transfer(self):
         created = await self.create_transfer(passengerCount=5)
         transfer_id = created['transfer']['id']
-        data = {'id': transfer_id, 'vehicleCategoryId': str(self.sedan.id)}
+        data = {'id': transfer_id, 'vehicleCategoryId': str(self.inactive.id)}
         result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
         self.assertEqual(self.error_code(result), 'ERR025')
         data['vehicleCategoryId'] = str(self.van.id)
@@ -1323,17 +1347,96 @@ class TransferTests(GraphQLTestCase):
         transfer = await models.Transfer.objects.aget(pk=transfer_id)
         self.assertEqual(transfer.status, 'PENDING')
         self.assertEqual(transfer.vehicle_category_id, self.van.id)
-        self.assertEqual(transfer.price, Decimal('957.50'))
-        self.assertEqual(transfer.psp_data['order_amount'], '957.50')
+        self.assertEqual(transfer.vehicle_count, 1)
+        self.assertEqual(transfer.price, Decimal('960.00'))
+        self.assertEqual(transfer.psp_data['order_amount'], '960.00')
         path, payload = self.async_post.call_args.args
         self.assertEqual(path, '/createPaymentLink')
-        self.assertEqual(payload['transaction']['order_amount'], Decimal('957.50'))
+        self.assertEqual(payload['transaction']['order_amount'], Decimal('960.00'))
         # Choosing again expires the previous link first
         result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
         self.ok(result, 'payTransfer')
         self.assertEqual(
             self.psp_paths()[-2:], ['/expirePaymentLink', '/createPaymentLink']
         )
+
+    async def test_vehicle_options_follow_updated_state(self):
+        # Only Greece allows multiple vehicles, the transfer starts in Turkey
+        states = models.State.objects.filter(pk=self.greece.pk)
+        await states.aupdate(allow_multiple_vehicles=True)
+        created = await self.create_transfer(passengerCount=5)
+        names = [o['vehicleCategory']['name'] for o in created['vehicleOptions']]
+        self.assertEqual(names, ['Van'])
+        data = {
+            'id': created['transfer']['id'],
+            'pickupDistrictName': 'Glyfada',
+            'dropoffDistrictName': 'Glyfada'
+        }
+        result = await self.execute(UPDATE_TRANSFER, {'data': data}, self.customer)
+        updated = self.ok(result, 'updateTransfer')
+        options = [
+            (o['vehicleCategory']['name'], o['count'])
+            for o in updated['vehicleOptions']
+        ]
+        self.assertEqual(options, [('Sedan', 2), ('Van', 1), ('Accessible Van', 2)])
+
+    async def test_pay_transfer_single_vehicle(self):
+        # The state does not allow multiple vehicles (default)
+        created = await self.create_transfer(passengerCount=5)
+        transfer_id = created['transfer']['id']
+        data = {'id': transfer_id, 'vehicleCategoryId': str(self.sedan.id)}
+        result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR025')
+        data = {
+            'id': transfer_id,
+            'vehicleCategoryId': str(self.van.id),
+            'vehicleCount': 2
+        }
+        result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR047')
+        data['vehicleCount'] = 1
+        result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
+        self.ok(result, 'payTransfer')
+        transfer = await models.Transfer.objects.aget(pk=transfer_id)
+        self.assertEqual(transfer.vehicle_count, 1)
+
+    async def test_pay_transfer_vehicle_count(self):
+        await self.allow_multiple_vehicles()
+        created = await self.create_transfer(passengerCount=5)
+        transfer_id = created['transfer']['id']
+        options = {
+            o['vehicleCategory']['id']: o for o in created['vehicleOptions']
+        }
+        unit_price = Decimal(options[str(self.sedan.id)]['price'])
+        data = {
+            'id': transfer_id,
+            'vehicleCategoryId': str(self.sedan.id),
+            'vehicleCount': 1
+        }
+        result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR046')
+        # Defaults to the option's count
+        del data['vehicleCount']
+        result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
+        self.ok(result, 'payTransfer')
+        transfer = await models.Transfer.objects.aget(pk=transfer_id)
+        self.assertEqual(transfer.vehicle_count, 2)
+        self.assertEqual(transfer.price, unit_price * 2)
+        # More than the minimum is allowed
+        data['vehicleCount'] = 3
+        result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
+        self.ok(result, 'payTransfer')
+        transfer = await models.Transfer.objects.aget(pk=transfer_id)
+        self.assertEqual(transfer.vehicle_count, 3)
+        self.assertEqual(transfer.price, unit_price * 3)
+        path, payload = self.async_post.call_args.args
+        self.assertEqual(payload['transaction']['order_amount'], unit_price * 3)
+        # Changing the needs clears the count with the selection
+        data = {'id': transfer_id, 'passengerCount': 6}
+        result = await self.execute(UPDATE_TRANSFER, {'data': data}, self.customer)
+        self.ok(result, 'updateTransfer')
+        transfer = await models.Transfer.objects.aget(pk=transfer_id)
+        self.assertEqual(transfer.vehicle_count, 1)
 
     async def test_update_transfer_clears_vehicle_selection(self):
         created = await self.create_transfer()
@@ -1351,8 +1454,11 @@ class TransferTests(GraphQLTestCase):
         updated = self.ok(result, 'updateTransfer')
         self.assertIsNone(updated['transfer']['vehicleCategoryId'])
         self.assertIsNone(updated['transfer']['price'])
-        names = [o['vehicleCategory']['name'] for o in updated['vehicleOptions']]
-        self.assertEqual(names, ['Van'])
+        options = [
+            (o['vehicleCategory']['name'], o['count'])
+            for o in updated['vehicleOptions']
+        ]
+        self.assertEqual(options, [('Van', 1)])
         self.assertEqual(self.psp_paths()[-1], '/expirePaymentLink')
 
     async def test_payment_return_marks_paid_and_notifies_operators(self):
