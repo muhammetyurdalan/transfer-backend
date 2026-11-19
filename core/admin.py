@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError
 from modeltranslation.admin import TranslationAdmin
 from core.models import (
     City, District, Invitation, Leg, Message, Notification, State, ThroughMessage,
-    Transaction, Transfer, User, Vehicle, VehicleCategory
+    Transaction, Transfer, TransferDriver, User, Vehicle, VehicleCategory
 )
 
 
@@ -157,10 +157,16 @@ class LegInline(admin.TabularInline):
     extra = 0
 
 
+class TransferDriverInline(admin.TabularInline):
+    model = TransferDriver
+    extra = 0
+    raw_id_fields = ['driver', 'vehicle', 'vehicle_category']
+
+
 @admin.register(Transfer)
 class TransferAdmin(admin.ModelAdmin):
     list_display = [
-        'id', 'customer_id', 'operator_id', 'driver_id', 'vehicle_category',
+        'id', 'customer_id', 'operator_id', 'vehicle_category',
         'status', 'pickup_time', 'price', 'currency'
     ]
     list_filter = ['status', 'vehicle_category', 'state']
@@ -169,10 +175,9 @@ class TransferAdmin(admin.ModelAdmin):
         'pickup_address', 'dropoff_address'
     ]
     raw_id_fields = [
-        'customer', 'operator', 'driver', 'vehicle', 'pickup_district',
-        'dropoff_district'
+        'customer', 'operator', 'pickup_district', 'dropoff_district'
     ]
-    inlines = [LegInline]
+    inlines = [TransferDriverInline, LegInline]
 
 
 @admin.register(Transaction)
@@ -183,7 +188,7 @@ class TransactionAdmin(admin.ModelAdmin):
     ]
     list_filter = ['category']
     search_fields = ['order_id', 'user__email']
-    raw_id_fields = ['transfer', 'user', 'parent']
+    raw_id_fields = ['transfer', 'user', 'driver', 'parent']
 
 
 class ThroughMessageInline(admin.TabularInline):

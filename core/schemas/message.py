@@ -18,11 +18,11 @@ Status = enums.TransferStatus
 MESSAGING_STATUSES = [Status.ACCEPTED, Status.STARTED]
 
 
-def get_visible_messages(user, transfer):
+async def get_visible_messages(user, transfer):
     messages = transfer.messages.all()
     if user.role in utils.STAFF_ROLES:
         return messages
-    utils.check_messaging_access(user, transfer)
+    await utils.check_messaging_access(user, transfer)
     filters = Q(sender=user) | Q(receivers=user)
     return messages.filter(filters).distinct()
 
@@ -39,7 +39,7 @@ class Query:
         user = info.context['user']
         transfer = await models.Transfer.objects.filter(pk=transfer_id).afirst()
         assert transfer, dumps({'code': 'ERR013'})
-        messages = get_visible_messages(user, transfer)
+        messages = await get_visible_messages(user, transfer)
         if ordering:
             args = (outputs.MessageOrder, ordering, info, messages)
             messages = sbd.ordering.apply_ordering(*args)
@@ -112,10 +112,10 @@ class Mutation:
         transfers = models.Transfer.objects.filter(pk=data.transfer_id)
         transfer = await transfers.afirst()
         assert transfer, dumps({'code': 'ERR013'})
-        utils.check_messaging_access(sender, transfer)
+        await utils.check_messaging_access(sender, transfer)
         check_messaging_available(transfer)
         if parent_id := data.parent_id:
-            parents = get_visible_messages(sender, transfer)
+            parents = await get_visible_messages(sender, transfer)
             parents = parents.filter(pk=parent_id, is_deleted=False)
             assert await parents.aexists(), dumps({'code': 'ERR023'})
         args = (sender.id, transfer)
@@ -185,7 +185,7 @@ class Mutation:
         user = info.context['user']
         transfer = await models.Transfer.objects.filter(pk=transfer_id).afirst()
         assert transfer, dumps({'code': 'ERR013'})
-        utils.check_messaging_access(user, transfer)
+        await utils.check_messaging_access(user, transfer)
         through_messages = user.through_messages.filter(transfer=transfer)
         await through_messages.aupdate(is_seen=True)
         await see_message_notifications(user.id, transfer)

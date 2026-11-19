@@ -5,7 +5,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from datetime import timedelta
 from django.apps import apps
 from django.conf import settings
-from django.db.models import DecimalField, OuterRef, Q, Subquery, Sum
+from django.db.models import DecimalField, Exists, OuterRef, Q, Subquery, Sum
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.translation import activate, gettext
@@ -137,24 +137,33 @@ STAFF_ROLES = (enums.Role.ADMIN, enums.Role.STAFF)
 DISPATCH_ROLES = STAFF_ROLES + (enums.Role.OPERATOR, )
 
 
-def get_participant_ids(transfer):
-    user_ids = (transfer.customer_id, transfer.operator_id, transfer.driver_id)
+async def get_driver_ids(transfer):
+    '''Internal (DRIVER user) drivers of the transfer.'''
+    drivers = models.TransferDriver.objects.filter(
+        transfer_id=transfer.pk, driver__isnull=False
+    ).values_list('driver_id', flat=True)
+    return {driver_id async for driver_id in drivers}
+
+
+async def get_participant_ids(transfer):
+    user_ids = {transfer.customer_id, transfer.operator_id}
+    user_ids |= await get_driver_ids(transfer)
     return {user_id for user_id in user_ids if user_id}
 
 
-def check_participant(user, transfer):
-    authorized = user.id in get_participant_ids(transfer)
+async def check_participant(user, transfer):
+    authorized = user.id in await get_participant_ids(transfer)
     assert authorized, dumps({'code': 'ERR001'})
 
 
-def get_receiver_ids(sender_id, transfer):
-    return get_participant_ids(transfer) - {sender_id}
+async def get_receiver_ids(sender_id, transfer):
+    return await get_participant_ids(transfer) - {sender_id}
 
 
-def check_messaging_access(user, transfer):
+async def check_messaging_access(user, transfer):
     '''ADMIN/STAFF can join every transfer's messaging.'''
     if user.role not in STAFF_ROLES:
-        check_participant(user, transfer)
+        await check_participant(user, transfer)
 
 
 async def get_admin_ids():
@@ -167,7 +176,7 @@ async def get_admin_ids():
 async def get_messaging_receiver_ids(sender_id, transfer):
     '''Participants and all active ADMIN/STAFF users, except the sender.'''
     admin_ids = await get_admin_ids()
-    return (get_participant_ids(transfer) | admin_ids) - {sender_id}
+    return (await get_participant_ids(transfer) | admin_ids) - {sender_id}
 
 
 def get_transfers(user, expand=()):
@@ -177,14 +186,17 @@ def get_transfers(user, expand=()):
     if user.role == enums.Role.OPERATOR:
         return transfers.filter(operator=user)
     if user.role == enums.Role.DRIVER:
-        return transfers.filter(driver=user)
+        assignments = models.TransferDriver.objects.filter(
+            transfer_id=OuterRef('pk'), driver=user
+        )
+        return transfers.filter(Exists(assignments))
     return transfers.filter(customer=user)
 
 
 def get_transactions(user):
     '''
     ADMIN/STAFF: all. OPERATOR: transactions of the transfers they operate.
-    DRIVER: tips (and their refunds) of own transfers.
+    DRIVER: tips (and their refunds) they received.
     Others: own payments, tips and refunds.
     completed_refund_amount is annotated for Transaction.refunded_amount
     (one query for the whole list instead of one per row).
@@ -204,8 +216,9 @@ def get_transactions(user):
     if user.role == enums.Role.OPERATOR:
         return transactions.filter(transfer__operator=user)
     if user.role == enums.Role.DRIVER:
-        tips = Q(category=Category.TIP) | Q(parent__category=Category.TIP)
-        return transactions.filter(tips, transfer__driver=user)
+        tips = Q(category=Category.TIP, driver=user)
+        refunds = Q(parent__category=Category.TIP, parent__driver=user)
+        return transactions.filter(tips | refunds)
     return transactions.filter(user=user)
 
 

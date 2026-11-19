@@ -1,6 +1,29 @@
 {
-    "Transfer": {
+    "TransferDriver": {
         "driver_name": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR",
+            "CUSTOMER"
+        ],
+        "driver_phone": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR"
+        ],
+        "plate": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR",
+            "CUSTOMER"
+        ],
+        "vehicle_brand": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR",
+            "CUSTOMER"
+        ],
+        "vehicle_model": [
             "ADMIN",
             "STAFF",
             "OPERATOR",

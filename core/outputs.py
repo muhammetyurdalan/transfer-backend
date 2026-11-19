@@ -1,5 +1,6 @@
 from django.db.models import (
-    Case, DateTimeField, F, IntegerField, Q, QuerySet, Sum, Value, When
+    Case, DateTimeField, Exists, F, IntegerField, OuterRef, Q, QuerySet, Sum,
+    Value, When
 )
 from django.db.models.expressions import OrderBy
 from django.utils import timezone
@@ -207,7 +208,7 @@ class VehicleCategoryOrder:
 
 @sbd.type(
     models.VehicleCategory,
-    exclude=['vehicles', 'transfers']
+    exclude=['vehicles', 'transfers', 'transfer_drivers']
 )
 class VehicleCategory:
     # Active language (user's language or the language argument). The
@@ -346,7 +347,7 @@ class VehicleOrder:
     created_at: sb.auto
 
 
-@sbd.type(models.Vehicle, exclude=['transfers'])
+@sbd.type(models.Vehicle, exclude=['transfer_drivers'])
 class Vehicle:
     driver_id: sb.ID
     category_id: sb.ID
@@ -369,8 +370,6 @@ class TransferFilter:
     status: Optional[sbd.BaseFilterLookup[enums.TransferStatus]] = sb.UNSET
     customer_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
     operator_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
-    driver_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
-    vehicle_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
     vehicle_category_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
     state_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
     pickup_district_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
@@ -387,9 +386,24 @@ class TransferFilter:
     
     @sbd.filter_field
     def has_driver(self, value: bool, prefix: str) -> Q:
-        if value:
-            return Q(driver_id__isnull=False)
-        return Q(driver_id__isnull=True)
+        """Has at least one (internal or external) driver."""
+        drivers = models.TransferDriver.objects.filter(transfer=OuterRef('pk'))
+        return Q(Exists(drivers)) if value else ~Q(Exists(drivers))
+
+    @sbd.filter_field
+    def driver_id(self, value: sb.ID, prefix: str) -> Q:
+        """One of the transfer's internal drivers."""
+        drivers = models.TransferDriver.objects.filter(
+            transfer=OuterRef('pk'), driver_id=value
+        )
+        return Q(Exists(drivers))
+
+    @sbd.filter_field
+    def vehicle_id(self, value: sb.ID, prefix: str) -> Q:
+        drivers = models.TransferDriver.objects.filter(
+            transfer=OuterRef('pk'), vehicle_id=value
+        )
+        return Q(Exists(drivers))
 
 
 @sbd.order_type(models.Transfer)
@@ -437,6 +451,19 @@ class Leg:
     transfer_id: sb.ID
 
 
+@sbd.type(models.TransferDriver, exclude=['transfer'])
+class TransferDriver:
+    transfer_id: sb.ID
+    driver_id: Optional[sb.ID]
+    vehicle_id: Optional[sb.ID]
+    vehicle_category_id: Optional[sb.ID]
+    driver: Optional[User]
+    vehicle: Optional[Vehicle]
+    vehicle_category: Optional[VehicleCategory]
+    driver_price_currency: Optional[enums.Currency]
+    is_external: bool = sbd.field(description='No user account (driverId is empty)')
+
+
 @sbd.type(
     models.Transfer,
     exclude=['messages', 'through_messages', 'transactions', 'psp_data']
@@ -444,16 +471,13 @@ class Leg:
 class Transfer:
     customer_id: sb.ID
     operator_id: Optional[sb.ID]
-    driver_id: Optional[sb.ID]
-    vehicle_id: Optional[sb.ID]
     vehicle_category_id: Optional[sb.ID]
     state_id: Optional[sb.ID]
     pickup_district_id: Optional[sb.ID]
     dropoff_district_id: Optional[sb.ID]
     customer: Optional[User]
     operator: Optional[User]
-    driver: Optional[User]
-    vehicle: Optional[Vehicle]
+    drivers: List[TransferDriver]
     vehicle_category: Optional[VehicleCategory]
     state: Optional[State]
     pickup_district: Optional[District]
@@ -461,7 +485,6 @@ class Transfer:
     legs: Optional[List[Leg]]
     status: Optional[enums.TransferStatus]
     currency: Optional[enums.Currency]
-    driver_price_currency: Optional[enums.Currency]
 
     @sbd.field(description='Scoped by role, like the transactions query')
     async def transactions(self, info: Info) -> List['Transaction']:
@@ -470,15 +493,6 @@ class Transfer:
             return []
         transactions = utils.get_transactions(user).filter(transfer_id=self.id)
         return [transaction async for transaction in transactions]
-    
-    @sbd.field(
-        only=['driver_id', 'driver_name'],
-        description='True if the transfer has a external driver.'
-    )
-    async def is_driver_external(self, info: Info) -> bool:
-        if not self.driver_id and bool((self.driver_name or '').strip()):
-            return True
-        return False
 
 
 @sb.type
@@ -542,9 +556,11 @@ class TransactionOrder:
 class Transaction:
     transfer_id: sb.ID
     user_id: sb.ID
+    driver_id: Optional[sb.ID] = sbd.field(description='Tip receiver')
     parent_id: Optional[sb.ID]
     transfer: Optional[Transfer]
     user: Optional[User]
+    driver: Optional[User]
     category: Optional[enums.TransactionCategory]
     status: Optional[enums.TransactionStatus]
     currency: Optional[enums.Currency]

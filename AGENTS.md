@@ -31,7 +31,7 @@ Testlerdeki traceback'ler beklenen `{"code": "ERR0xx"}` loglarıdır, sonuç sat
 |---|---|
 | `CUSTOMER` | Transfer oluşturur, araç kategorisi seçip öder, iptal eder, bahşiş verir, mesajlaşır |
 | `OPERATOR` | Ödenen transferlerden haberdar olur, uygun sürücüyü bulup atar, araç yönetir, iptal eder, mesajlaşır (atadığı transferde) |
-| `DRIVER` | Kendisine atanan transferleri görür, durumunu `STARTED`/`COMPLETED` yapar, mesajlaşır, bahşişlerini görür, kendi adına araç ekler (`createVehicle`, `driverId` her zaman kendisi; diğer roller `driverId` vermezse `ERR030`) |
+| `DRIVER` | Atandığı (`TransferDriver`) transferleri görür, durumunu `STARTED`/`COMPLETED` yapar, mesajlaşır, bahşişlerini görür, kendi adına araç ekler (`createVehicle`, `driverId` her zaman kendisi; diğer roller `driverId` vermezse `ERR030`) |
 | `ADMIN`, `STAFF` | Her şeyi görür. Araç kategorisi yönetimi ve iade (`refundTransaction`) sadece bunlarda |
 
 Kayıt e-posta doğrulamalı (`getCode` → `validateCode`) iki mutation'la yapılır: `createCustomer` (`CUSTOMER`) ve `createDriver` (`DRIVER`), ikisi de `CreateUser` input'unu alır. `OPERATOR`'ü ADMIN `updateAdminUser` ile verir.
@@ -53,9 +53,10 @@ payTransfer(vehicleCategoryId, vehicleCount?) ──► kategori + araç sayıs�
    │
 psp-return PAYMENT_RETURN success ──► PAID, PAYMENT transaction, tüm OPERATOR'lere bildirim (TRANSFER_PAID)
    │
-availableDrivers / availableVehicles ──► assignDriver ──► ASSIGNED (driver + vehicle + operator)
-   │                                        sürücüye ve müşteriye TRANSFER_ASSIGNED
-updateTransferStatus ──► STARTED ──► COMPLETED ──► tipDriver ──► /createTipLink ──► TIP_RETURN
+availableDrivers / availableVehicles ──► assignDriver (en fazla vehicle_count, iç veya dış sürücü) ──► TransferDriver
+   │                                        status değişmez (ACCEPTED kalır), iç sürücüye ve müşteriye TRANSFER_ASSIGNED
+updateTransferStatus ──► STARTED ──► COMPLETED ──► tipDriver
+   │                    (ACCEPTED ──► COMPLETED de olur: "başlat ve bitir" tek adımda) ──► /createTipLink ──► TIP_RETURN
 cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, değilse /expirePaymentLink
 her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIRED + /expirePaymentLink
 ```
@@ -81,20 +82,24 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - **Uygunluk** (`VehicleCategoryQuerySet.eligible_for`): aktif ve `passenger_count`, `luggage_count`, `child_seat_count` kapasiteyi aşmıyor, `needs_wheelchair` ise erişilebilir.
 - **Fiyat** (`VehicleCategory.get_price`): `max(minimum_fare, base_fare + distance_km * per_km_price + duration_min * per_minute_price)`, 2 ondalık.
 - `distance` (km) ve `duration` (dk) istemciden gelir (harita SDK'sı), fiyat her zaman sunucuda hesaplanır.
-- **Araç sayısı** (`VehicleCategoryQuerySet.options_for`, `get_vehicle_categories`): transferin state'inde `allow_multiple_vehicles` (varsayılan `False`, `createState`/`updateState`) açıksa `with_counts` kullanılır: kapasiteyi aşan kategoriler de döner, `count` = `max(ceil(passenger_count / max_passengers), ceil(luggage_count / max_luggage))`. Kapalıysa (veya transferin state'i yoksa) `eligible_for` + `count=1`, yani sadece tek araca sığan kategoriler. Bayrak `transfer.state`'ten okunur (`allows_multiple_vehicles`, sorgu atmaz): çağıranlar state'i `expand=['state']` ile yükler, `createTransfer`/`updateTransfer`'da `set_districts` state değişince yenisini yükler. Çocuk koltuğu ve tekerlekli sandalye araç başına filtredir. `price` tek araç fiyatıdır. `payTransfer(vehicleCategoryId, vehicleCount?)` aynı listeyi kullanır: `vehicleCount` verilmezse kategorinin `count`'u, `count`'tan azsa `ERR046`, bayrak kapalıyken 1'den farklıysa `ERR047`. `Transfer.vehicle_count`'a yazılır, ödenen `price` = birim fiyat × `vehicle_count`. Seçim sıfırlanınca (`clear_vehicle_selection`) `vehicle_count` 1 olur. `assignDriver` hâlâ tek sürücü/araç atar.
+- **Araç sayısı** (`VehicleCategoryQuerySet.options_for`, `get_vehicle_categories`): transferin state'inde `allow_multiple_vehicles` (varsayılan `False`, `createState`/`updateState`) açıksa `with_counts` kullanılır: kapasiteyi aşan kategoriler de döner, `count` = `max(ceil(passenger_count / max_passengers), ceil(luggage_count / max_luggage))`. Kapalıysa (veya transferin state'i yoksa) `eligible_for` + `count=1`, yani sadece tek araca sığan kategoriler. Bayrak `transfer.state`'ten okunur (`allows_multiple_vehicles`, sorgu atmaz): çağıranlar state'i `expand=['state']` ile yükler, `createTransfer`/`updateTransfer`'da `set_districts` state değişince yenisini yükler. Çocuk koltuğu ve tekerlekli sandalye araç başına filtredir. `price` tek araç fiyatıdır. `payTransfer(vehicleCategoryId, vehicleCount?)` aynı listeyi kullanır: `vehicleCount` verilmezse kategorinin `count`'u, `count`'tan azsa `ERR046`, bayrak kapalıyken 1'den farklıysa `ERR047`. `Transfer.vehicle_count`'a yazılır, ödenen `price` = birim fiyat × `vehicle_count`. Seçim sıfırlanınca (`clear_vehicle_selection`) `vehicle_count` 1 olur. Atama sayısı `vehicle_count`'u aşamaz (§4.2).
 - `vehicleOptions(transferId)` aynı listeyi tekrar döner. İsimler kullanıcının dilinde döner. Public `vehicleCategories(language)` sorgusunda dil argümandan alınır.
 
 ### 4.2 Uygun sürücü sorgusu (`core/managers.py`)
-- `User.objects.available_drivers(transfer)`: aktif ve `status=ACCEPTED` `DRIVER`, transferin kategorisinde **aktif aracı olan** ve o saatte **başka bir işi olmayan** kullanıcılar.
-- **Meşgul** = `ASSIGNED`/`STARTED` durumundaki başka bir transferi, `[pickup_time - buffer, end_time + buffer]` aralığıyla kesişen sürücü. `end_time = pickup_time + duration` (`Transfer.save`), `buffer = DRIVER_BUFFER_MINUTES` (30). Yani iki iş arasında en az 30 dk olmalı.
+- **Atamalar** (`TransferDriver`, `Transfer.drivers`): bir transferde en fazla `vehicle_count` kadar sürücü olur. **İç sürücü** `driver` (DRIVER kullanıcısı) + `vehicle` taşır, `driver_name` kullanıcının adından, `plate`/`vehicle_brand`/`vehicle_model` aracın plaka/marka/modelinden kopyalanır. **Dış sürücü** sistemde hesabı olmayan kişidir: `driver`/`vehicle` boş, `driver_name` (zorunlu, 100), `driver_phone` (20), `plate` (20), `vehicle_brand`/`vehicle_model` (50) elle girilir. `vehicle_category` her zaman transferin kategorisidir (atamada yazılır, seçilmez; iç sürücüler zaten bu kategoride boş aracı olanlardır). `isExternal` = `driverId` boş. Aynı iç sürücü bir transferde bir kez olabilir (`unique_transfer_driver`). Atamalar transferin `status`'ünü **değiştirmez**.
+- `User.objects.available_drivers(transfer)`: aktif ve `status=ACCEPTED` `DRIVER`, transferin kategorisinde **boşta aktif aracı olan**, bu transfere henüz atanmamış ve o saatte **başka bir işi olmayan** kullanıcılar.
+- **Meşgul** = `ACCEPTED`/`STARTED` durumundaki başka bir transferde ataması olan ve o transferin `[pickup_time - buffer, end_time + buffer]` aralığı bu transferle kesişen sürücü (araç için de aynı kural, `Vehicle.objects.suitable_for` bu transferde veya çakışan transferde kullanılan aracı eler). `end_time = pickup_time + duration` (`Transfer.save`), `buffer = State.driver_buffer_minutes` (varsayılan 30).
 - `Vehicle.objects.available_for(transfer)`: uygun sürücülerin uygun araçları (`availableVehicles`).
-- `assignDriver` aynı sorguyla doğrular (`ERR015`). `vehicleId` verilmezse sürücünün uygun ilk aracı atanır (`ERR027`). `PAID` ve `ASSIGNED` iken (yeniden atama) çağrılabilir. Eski sürücüye `TRANSFER_CANCELLED` bildirimi gider.
+- **`assignDriver(id, driverId?, vehicleId?, driverName?, driverPhone?, plate?, vehicleBrand?, vehicleModel?, driverPrice?, driverPriceCurrency?)`** (OPERATOR/ADMIN/STAFF, sadece `ACCEPTED`): atama ekler, döndürdüğü `Transfer`'in `drivers`'ı güncel listedir. Atama sayısı `vehicle_count`'a ulaştıysa `ERR048`. `driverId` varsa iç sürücü: uygun sürücü sorgusuyla doğrulanır (`ERR015`), `vehicleId` verilmezse uygun ilk aracı (`ERR027`), `driverName`/`driverPhone`/`plate`/`vehicleBrand`/`vehicleModel` yok sayılır. `driverId` yoksa dış sürücü: `driverName` boşsa, uzunluklar aşılırsa veya `vehicleId` verilirse `ERR030`. OPERATOR atarsa transferin `operator`'ü olur. İç sürücüye `TRANSFER_ASSIGNED` bildirimi, iç sürücü + müşteriye WebSocket olayı.
+- **`updateTransferDriver(id, ...)`** (OPERATOR/ADMIN/STAFF, transfer `ACCEPTED`/`STARTED`, yoksa `ERR014`): fiyat alanları, dış sürücüde ayrıca ad/telefon/plaka/marka/model (iç sürücüde yok sayılır). Sürücüyü değiştirmek için atama silinip yeniden yapılır. Görünmeyen/olmayan atama `ERR049`.
+- **`removeTransferDriver(id)`** (OPERATOR/ADMIN/STAFF, sadece `ACCEPTED`): atamayı siler, iç sürücüye `TRANSFER_CANCELLED` bildirimi ("unassigned"), müşteriye `TRANSFER_ASSIGNED` olayı. Sürücü transferi artık göremez.
+- Filtreler: `TransferFilter.driverId` / `vehicleId` (atamalardan herhangi biri), `hasDriver` (en az bir atama).
 - **Dikkat:** liste döndüren `sbd.field`'larda argüman adı `id` olursa strawberry-django onu pk filtresi olarak uygular. Transfer'e bağlı sorgular bu yüzden `transferId` alır.
 
-### 4.2.1 Sürücü ücreti (`driver_name`, `driver_price`, `driver_price_currency`)
-- Opsiyonel `Transfer` alanları. `driverPrice`/`driverPriceCurrency` sadece ADMIN/STAFF/OPERATOR görür, `driverName`'i ayrıca CUSTOMER da görür (`permissions.json`). Diğerlerine `null` döner (DRIVER `driverName`'i de göremez).
-- `assignDriver`: `driverName` sürücünün adından (`first_name last_name`) set edilir, opsiyonel `driverPrice` (2 ondalığa yuvarlanır, negatifse 0 kaydedilir) ve `driverPriceCurrency` alınır. Yeniden atamada fiyat verilmezse önceki değer kalır.
-- `updateTransfer`: bu üç alanı sadece OPERATOR/ADMIN/STAFF gönderebilir (`ERR001`). Sadece bu alanlar gönderilirse `PENDING`/`ACCEPTED`/`STARTED` iken güncellenir, başka alan da varsa eskisi gibi sadece `PENDING` (`ERR014`). Transferde sürücü atanmışsa `driverName` yok sayılır.
+### 4.2.1 Sürücü bilgisi ve ücreti (`TransferDriver`)
+- Görünürlük (`permissions.json`): `driverName`, `plate`, `vehicleBrand`, `vehicleModel` ADMIN/STAFF/OPERATOR/CUSTOMER, `driverPhone`, `driverPrice`, `driverPriceCurrency` sadece ADMIN/STAFF/OPERATOR. Diğerlerine `null` döner (DRIVER diğer sürücülerin adını da göremez).
+- `driverPrice` 2 ondalığa yuvarlanır, negatifse 0 kaydedilir.
+- Eski `Transfer.driver`/`vehicle`/`driver_name`/`driver_price`/`driver_price_currency` alanları ve `isDriverExternal` kaldırıldı, migration `0016_transfer_drivers` bunları birer `TransferDriver`'a taşıdı (sadece `driver_name` dolu olan dış sürücü oldu). `updateTransfer` artık sürücü alanı almaz. Ödeme mikroservisine giden `transfer` payload'ında (`utils.get_dict`) bu alanlar artık yok.
 
 ### 4.3 Ödeme (`core/psp.py`)
 Ödeme mikroservisi (`3rd-party-microservices`) istemcisi. Payload anahtarları ottobus/meetngreet sözleşmesini izler. `PSP_MS_URL`, `MS_ACCESS_TOKEN`, `PSP_STATE` (`.env`). Mikroservis/ağ hatası istemciye `ERR031` döner (`psp.PSPError`), mikroservisin kendi hatası `error_code` özelliğinde taşınır (ağ hatasında `ERR031`).
@@ -103,13 +108,14 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 |---|---|
 | `/createPaymentLink` | `payTransfer`. Önceki link varsa önce `/expirePaymentLink` |
 | `/expirePaymentLink` | Seçim değişince, rota güncellenince, ödenmemiş transfer iptalinde |
-| `/createTipLink` | `tipDriver` (sadece `COMPLETED`). `provider` = sürücünün `psp_data`'sı |
+| `/createTipLink` | `tipDriver` (sadece `COMPLETED`). `provider` = seçilen iç sürücünün `psp_data`'sı |
 | `/refundPayment` | `cancelTransfer` (ödenmişse) ve `refundTransaction` |
 
-- **Webhook `POST /psp-return/`** (`X-Access-Token`): `PAYMENT_RETURN` → transfer koşullu update ile `PENDING → PAID` (tekrar gelen istek bir kez işlenir), `PAYMENT` transaction, müşteriye `PAYMENT_SUCCESS`, operatörlere bildirim + `TRANSFER_PAID`. `TIP_RETURN` → `TIP` transaction, sürücüye bildirim. Başarısızsa `PAYMENT_FAILED` / `TIP_PAYMENT_FAILED`.
-- **Transaction** kategorileri: `PAYMENT`, `TIP`, `REFUND` (`parent` = iade edilen kayıt). `user` her zaman müşteri. Sorgu kapsamı: ADMIN/STAFF hepsi, OPERATOR operatörü olduğu transferlerinkiler, DRIVER kendi transferlerinin bahşişleri (ve iadeleri), diğerleri kendi kayıtları. Kapsam `utils.get_transactions`'ta. `Transfer.transactions` alanı da aynı kapsamla o transferin kayıtlarını döner (token yoksa boş liste), transfer detayında ayrıca `transactions` sorgusuna gerek yok.
+- **Webhook `POST /psp-return/`** (`X-Access-Token`): `PAYMENT_RETURN` → transfer koşullu update ile `PENDING → PAID` (tekrar gelen istek bir kez işlenir), `PAYMENT` transaction, müşteriye `PAYMENT_SUCCESS`, operatörlere bildirim + `TRANSFER_PAID`. `TIP_RETURN` → `TIP` transaction (`driver` = bahşişi alan, `psp_data.tip_driver_id`'den), o sürücüye bildirim. Başarısızsa `PAYMENT_FAILED` / `TIP_PAYMENT_FAILED`.
+- **Transaction** kategorileri: `PAYMENT`, `TIP`, `REFUND` (`parent` = iade edilen kayıt). `user` her zaman müşteri, `driver` bahşişi alan sürücü (sadece `TIP`). Sorgu kapsamı: ADMIN/STAFF hepsi, OPERATOR operatörü olduğu transferlerinkiler, DRIVER kendisine verilen bahşişler (ve onların iadeleri), diğerleri kendi kayıtları. Kapsam `utils.get_transactions`'ta. `Transfer.transactions` alanı da aynı kapsamla o transferin kayıtlarını döner (token yoksa boş liste), transfer detayında ayrıca `transactions` sorgusuna gerek yok.
 - **`is_payout_sent`**: sadece OPERATOR/ADMIN/STAFF görür. `updateTransaction(id, note?, isPayoutSent?)` OPERATOR/ADMIN/STAFF, OPERATOR sadece operatörü olduğu transferlerin kayıtlarını görür ve günceller (`ERR034`). `TransactionFilter.isPayoutSent` da sadece bu rollerde, diğerleri kullanırsa `ERR001`.
 - **`Transaction.status`** (`TransactionStatus`: `PENDING` varsayılan, `FAILED`, `COMPLETED`; `FAILED`'ı şu an hiçbir akış set etmiyor): `PAYMENT`/`TIP` mikroservis başarıyı bildirdiğinde `COMPLETED` olarak oluşur. `REFUND` önce `PENDING` kaydedilir, `/refundPayment` başarılıysa `COMPLETED` olur.
+- **Bahşiş:** `tipDriver(id, amount, transferDriverId?)` CUSTOMER, sadece iç sürücüye. `transferDriverId` verilmezse transferin tek iç sürücüsü; iç sürücü yoksa veya verilen atama dış sürücüyse `ERR033`, birden fazla iç sürücü varken verilmezse `ERR030`.
 - **İade:** `refundTransaction(id, amount?)` ADMIN/STAFF, kısmi veya kalan tutarın tamamı, toplam iade ödemeyi aşamaz (`ERR032`). Bahşiş de iade edilebilir.
   - **Kilit:** her iade bir DB transaction'ında satır kilidiyle yapılır (`select_for_update`, `psp.create_refund`/`resend_refund`): yeni iadede ödeme (parent) satırı, tekrar denemede iade satırı kilitlenir. Aynı anda gelen istekler kilidi bekler ve işlenmiş iadeyi görür, aynı tutar iki kez iade edilmez. Kilit `/refundPayment` isteği boyunca tutulur. SQLite'ta (testler) `select_for_update` etkisizdir, kilit PostgreSQL'de çalışır.
   - **Başarısız iade:** mikroservis hata verirse iade `PENDING` olarak kalır, mikroservisin hatası `Transaction.error_code`'a yazılır (dict ise `code`/`message`, en fazla 50 karakter; ulaşılamazsa `ERR031`), başarılı tekrar denemede temizlenir (hata dönmez, kayıt döner), müşteriye `REFUND` bildirimi sadece `COMPLETED` olunca gider. `PENDING` iadeler iade edilebilir tutardan düşülür, yani üstüne yeni iade açılamaz, tekrar denenmelidir. `cancelTransfer`'da iade başarısız olsa da transfer `CANCELLED` olur.
@@ -117,7 +123,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - **İptal cezası:** `CANCEL_PENALTY_RULES` (settings, varsayılan `[]` = her zaman tam iade). Sadece müşterinin iptalinde uygulanır, OPERATOR/ADMIN/STAFF iptali tam iade.
 
 ### 4.4 Mesajlaşma (`schemas/message.py`)
-- Mesajlar `Transfer`'e bağlı. Katılımcılar: `customer`, `operator` (atamayı yapan), `driver` ve **tüm aktif ADMIN/STAFF kullanıcıları** (her transferin mesajlaşmasına dahil). Alıcılar gönderen dışındaki katılımcılar (`utils.get_messaging_receiver_ids`), yani ADMIN/STAFF her mesajın bildirimini ve WebSocket olayını alır.
+- Mesajlar `Transfer`'e bağlı. Katılımcılar: `customer`, `operator` (atamayı yapan), transferin bütün iç sürücüleri (`utils.get_driver_ids`, dış sürücülerin hesabı yok) ve **tüm aktif ADMIN/STAFF kullanıcıları** (her transferin mesajlaşmasına dahil). Alıcılar gönderen dışındaki katılımcılar (`utils.get_messaging_receiver_ids`), yani ADMIN/STAFF her mesajın bildirimini ve WebSocket olayını alır.
 - Sadece `ACCEPTED`/`STARTED` iken açık (`ERR019`). Gönderebilen roller: CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF. ADMIN/STAFF hepsini okur. Sonradan eklenen ADMIN/STAFF eski mesajların alıcısı olmaz ama hepsini okuyabilir.
 - Reply (`parentId`), dosya (2MB, `ERR024`) ve konum eki var. Düzenleme 1 saat içinde (`is_edited` true olur), silme soft delete. Her mesajda alıcılara `MESSAGE` bildirimi ve WebSocket olayı.
 
@@ -136,12 +142,12 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR048**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR050**.
 
 | Aralık | Alan |
 |---|---|
 | ERR001–ERR004, ERR009–ERR012, ERR043–ERR045 | Auth, kullanıcı (ERR043: telefon zorunlu, ERR044: davet bulunamadı/kullanılmış, ERR045: sosyal giriş token'ı geçersiz) |
-| ERR013–ERR016, ERR035 | Transfer (ERR035: district bulunamadı) |
+| ERR013–ERR016, ERR035, ERR048–ERR049 | Transfer (ERR035: district bulunamadı, ERR048: sürücü sayısı `vehicle_count`'a ulaştı, ERR049: sürücü ataması bulunamadı) |
 | ERR017–ERR024 | Mesajlaşma |
 | ERR025–ERR029, ERR046–ERR047 | Araç kategorisi, araç (ERR046: araç sayısı kategorinin gereksiniminden az, ERR047: state çoklu araca izin vermiyor) |
 | ERR030 | Geçersiz parametre |
@@ -161,7 +167,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 | S3 dosya depolama | ✅ `USE_S3=true` ise, değilse `MEDIA_ROOT` |
 | FCM push | ✅ `FIREBASE_CREDENTIALS` doluysa |
 | Sosyal giriş | Sorulmadı, ❌ |
-| Araç–sürücü ilişkisi | `Vehicle` modeli, sürücüye bağlı (`Vehicle.driver`) |
+| Araç–sürücü ilişkisi | `Vehicle` modeli, sürücüye bağlı (`Vehicle.driver`). Transfer–sürücü: `TransferDriver` (birden fazla, iç veya dış) |
 | Mesafe/süre kaynağı | İstemci gönderir, fiyat sunucuda |
 
 ## 7. Açık konular
@@ -171,7 +177,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 | Ödeme mikroservisi | Sadece istek kodları ve webhook yazıldı. Payload anahtarları ve `state` (`PSP_STATE`) mikroservisle doğrulanmalı. Webhook'un `payment_id` gönderip göndermediği bilinmiyor, son link ödendi varsayılıyor |
 | Sürücü ödeme hesabı | `User.psp_data` (bahşiş için `provider`) dolduran bir akış (`/createUpdateAccount`) yok |
 | İptal edilmiş transfer için gelen başarılı ödeme | Sadece loglanıyor, otomatik iade yok |
-| Eşzamanlı atama | `assignDriver` kontrol + kayıt arasında kilit yok, iki operatör aynı anda aynı sürücüyü çakışan transferlere atayabilir |
+| Eşzamanlı atama | `assignDriver` kontrol + kayıt arasında kilit yok, iki operatör aynı anda aynı sürücüyü çakışan transferlere atayabilir veya `vehicle_count`'u aşabilir |
 | Alış saati geçmiş ödenmiş (`ACCEPTED`) transferler | Otomatik işlem yok, `check_transfers_expiring` sadece `PENDING`'i expire eder |
 | Çeviriler | `locale/` (tr, de, ru); mail şablonları mikroserviste `<action>_<dil>.html`, de/ru şablonları orada eklenmeli |
 | District eşleştirme | Sadece isimle, şehir olmadan. Aynı isimli district'lerde yanlış eşleşme olabilir. PostgreSQL'de Türkçe `İ/ı` harfleri `iexact` ile her zaman eşleşmeyebilir |

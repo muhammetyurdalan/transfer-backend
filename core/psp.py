@@ -27,7 +27,9 @@ ZERO = models.ZERO
 PAYMENT_KEYS = (
     'payment_id', 'payment_link', 'payment_link_expire_time', 'order_amount'
 )
-TIP_KEYS = ('tip_id', 'tip_link', 'tip_link_expire_time', 'tip_amount')
+TIP_KEYS = (
+    'tip_id', 'tip_link', 'tip_link_expire_time', 'tip_amount', 'tip_driver_id'
+)
 
 
 class PSPError(Error):
@@ -175,10 +177,12 @@ async def process_payment_return(data):
 
 # Tip
 
-async def get_tip_link(transfer, amount):
-    driver = transfer.driver
+async def get_tip_link(transfer, amount, driver):
+    """Tip link to the driver (an internal one, psp_data is their account)."""
     await expire_payment_link(transfer, 'tip')
-    transaction = get_transaction(transfer, Category.TIP, amount)
+    transaction = get_transaction(
+        transfer, Category.TIP, amount, driver_id=driver.id
+    )
     data = {
         'psp': transfer.state.psp.lower(),
         'transfer': utils.get_dict(transfer),
@@ -192,6 +196,7 @@ async def get_tip_link(transfer, amount):
     transfer.psp_data['tip_link'] = response['payment_link']
     transfer.psp_data['tip_link_expire_time'] = response['link_expire_time']
     transfer.psp_data['tip_amount'] = str(amount)
+    transfer.psp_data['tip_driver_id'] = driver.id
 
 
 async def process_tip_return(data):
@@ -203,7 +208,8 @@ async def process_tip_return(data):
     if not (transfer and transfer.psp_data.get('tip_amount')):
         return
     action_kwargs = {'transfer_id': transfer_id}
-    customer_id, driver_id = transfer.customer_id, transfer.driver_id
+    customer_id = transfer.customer_id
+    driver_id = transfer.psp_data.get('tip_driver_id')
     if not data.get('success'):
         args = (None, Action.TIP_PAYMENT_FAILED, [customer_id])
         await utils.broadcast(*args, **action_kwargs)
@@ -217,7 +223,7 @@ async def process_tip_return(data):
         return
     transaction = get_transaction(
         transfer, Category.TIP, amount,
-        status=TransactionStatus.COMPLETED
+        status=TransactionStatus.COMPLETED, driver_id=driver_id
     )
     transaction.order_id = data.get('order_id') or ''
     await transaction.asave()
