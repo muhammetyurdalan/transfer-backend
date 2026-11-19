@@ -1,6 +1,8 @@
 # Caddy gets and renews the HTTPS certificates automatically.
 
-cihanviptransfers.com {
+# http:// listed explicitly so http://cihanviptransfers.com goes to www in one hop
+# (otherwise Caddy first redirects it to https://cihanviptransfers.com)
+cihanviptransfers.com, http://cihanviptransfers.com {
 	redir https://www.cihanviptransfers.com{uri} permanent
 }
 
