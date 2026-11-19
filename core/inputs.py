@@ -339,16 +339,6 @@ class UpdateTransfer:
     legs: Optional[List[CreateLeg]] = optional(
         'replaces all legs (stops), [] removes them; counts as a route change'
     )
-    driver_name: Optional[str] = optional(
-        'OPERATOR, ADMIN, STAFF. 100 chars max, '
-        'ignored if a driver is assigned'
-    )
-    driver_price: Optional[Decimal] = optional(
-        'OPERATOR, ADMIN, STAFF. 8.2, >= 0'
-    )
-    driver_price_currency: Optional[enums.Currency] = optional(
-        'OPERATOR, ADMIN, STAFF'
-    )
 
 
 @sb.input
@@ -362,10 +352,48 @@ class PayTransfer:
 
 @sb.input
 class AssignDriver:
-    id: sb.ID
-    driver_id: sb.ID = required('one of availableDrivers')
+    id: sb.ID = required('transfer id')
+    driver_id: Optional[sb.ID] = optional(
+        'one of availableDrivers, empty for an external driver'
+    )
     vehicle_id: Optional[sb.ID] = optional(
-        "driver's suitable vehicle, default: the first one"
+        "internal driver's suitable vehicle, default: the first one"
+    )
+    driver_name: Optional[str] = optional(
+        '100 chars max, required for an external driver, '
+        "an internal driver's name is taken from the user"
+    )
+    driver_phone: Optional[str] = optional('20 chars max, external driver')
+    plate: Optional[str] = optional(
+        "20 chars max, external driver, an internal driver's is the vehicle's"
+    )
+    vehicle_brand: Optional[str] = optional(
+        "50 chars max, external driver, an internal driver's is the vehicle's"
+    )
+    vehicle_model: Optional[str] = optional(
+        "50 chars max, external driver, an internal driver's is the vehicle's"
+    )
+    driver_price: Optional[Decimal] = optional('8.2, >= 0')
+    driver_price_currency: Optional[enums.Currency] = optional()
+
+
+@sb.input
+class UpdateTransferDriver:
+    id: sb.ID = required('Transfer.drivers id')
+    driver_name: Optional[str] = optional(
+        '100 chars max, external driver (ignored for an internal one)'
+    )
+    driver_phone: Optional[str] = optional(
+        '20 chars max, external driver (ignored for an internal one)'
+    )
+    plate: Optional[str] = optional(
+        '20 chars max, external driver (ignored for an internal one)'
+    )
+    vehicle_brand: Optional[str] = optional(
+        '50 chars max, external driver (ignored for an internal one)'
+    )
+    vehicle_model: Optional[str] = optional(
+        '50 chars max, external driver (ignored for an internal one)'
     )
     driver_price: Optional[Decimal] = optional('8.2, >= 0')
     driver_price_currency: Optional[enums.Currency] = optional()
@@ -374,13 +402,19 @@ class AssignDriver:
 @sb.input
 class UpdateTransferStatus:
     id: sb.ID
-    status: enums.TransferStatus = required('ACCEPTED -> STARTED -> COMPLETED')
+    status: enums.TransferStatus = required(
+        'ACCEPTED -> STARTED -> COMPLETED, ACCEPTED -> COMPLETED'
+    )
 
 
 @sb.input
 class TipDriver:
     id: sb.ID
     amount: Decimal = required('8.2, > 0')
+    transfer_driver_id: Optional[sb.ID] = optional(
+        'Transfer.drivers id of an internal driver, '
+        'required if the transfer has more than one'
+    )
 
 
 # Transaction

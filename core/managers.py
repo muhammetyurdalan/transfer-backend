@@ -2,7 +2,7 @@ from datetime import timedelta
 from django.apps import apps
 from django.contrib.auth.base_user import BaseUserManager
 from django.db.models import (
-    F, Exists, ExpressionWrapper, IntegerField, OuterRef, QuerySet, Value
+    F, Exists, ExpressionWrapper, IntegerField, OuterRef, Q, QuerySet, Value
 )
 from django.db.models.functions import Greatest
 
@@ -29,16 +29,19 @@ class UserQuerySet(QuerySet):
 
     def available_drivers(self, transfer):
         """
-        Active, ACCEPTED (verified) drivers who have an active vehicle in the
-        transfer's vehicle category and no other busy transfer overlapping its
-        time window.
+        Active, ACCEPTED (verified) drivers who have a free active vehicle in
+        the transfer's vehicle category, are not assigned to this transfer yet
+        and have no other busy transfer overlapping its time window.
         """
         vehicles = get_model('Vehicle').objects.suitable_for(transfer)
         vehicles = vehicles.filter(driver_id=OuterRef('pk'))
-        transfers = get_model('Transfer').objects.overlapping(transfer)
-        transfers = transfers.filter(driver_id=OuterRef('pk'))
+        overlapping = get_model('Transfer').objects.overlapping(transfer)
+        assignments = get_model('TransferDriver').objects.filter(
+            Q(transfer__in=overlapping) | Q(transfer_id=transfer.pk),
+            driver_id=OuterRef('pk')
+        )
         drivers = self.drivers().filter(status='ACCEPTED')
-        return drivers.filter(Exists(vehicles)).exclude(Exists(transfers))
+        return drivers.filter(Exists(vehicles)).exclude(Exists(assignments))
 
 
 class UserManager(BaseUserManager.from_queryset(UserQuerySet)):
@@ -110,10 +113,19 @@ class VehicleCategoryQuerySet(QuerySet):
 
 class VehicleQuerySet(QuerySet):
     def suitable_for(self, transfer):
+        """
+        Active vehicles of the transfer's category that are not used by this
+        transfer or by an overlapping busy transfer.
+        """
+        overlapping = get_model('Transfer').objects.overlapping(transfer)
+        assignments = get_model('TransferDriver').objects.filter(
+            Q(transfer__in=overlapping) | Q(transfer_id=transfer.pk),
+            vehicle_id=OuterRef('pk')
+        )
         return self.filter(
             is_active=True,
             category_id=transfer.vehicle_category_id
-        )
+        ).exclude(Exists(assignments))
 
     def available_for(self, transfer):
         drivers = get_model('User').objects.available_drivers(transfer)

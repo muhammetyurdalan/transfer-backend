@@ -278,20 +278,8 @@ class Transfer(models.Model):
         on_delete=models.SET_NULL,
         blank=True, null=True
     )
-    driver = models.ForeignKey(
-        User,
-        related_name='driver_transfers',
-        on_delete=models.SET_NULL,
-        blank=True, null=True
-    )
     vehicle_category = models.ForeignKey(
         VehicleCategory,
-        related_name='transfers',
-        on_delete=models.PROTECT,
-        blank=True, null=True
-    )
-    vehicle = models.ForeignKey(
-        Vehicle,
         related_name='transfers',
         on_delete=models.PROTECT,
         blank=True, null=True
@@ -350,13 +338,6 @@ class Transfer(models.Model):
         choices=enums.Currency.choices,
         blank=True, null=True
     )
-    driver_name = models.CharField(max_length=100, blank=True, null=True)
-    driver_price = models.DecimalField(**DECIMAL_10, blank=True, null=True)
-    driver_price_currency = models.CharField(
-        max_length=3,
-        choices=enums.Currency.choices,
-        blank=True, null=True
-    )
     psp_data = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -366,7 +347,7 @@ class Transfer(models.Model):
     class Meta:
         ordering = ['-pickup_time', '-id']
         indexes = [
-            models.Index(fields=['driver', 'status', 'pickup_time']),
+            models.Index(fields=['status', 'pickup_time']),
         ]
 
     def __str__(self):
@@ -375,6 +356,69 @@ class Transfer(models.Model):
     def save(self, *args, **kwargs):
         self.end_time = self.pickup_time + timedelta(minutes=self.duration)
         return super().save(*args, **kwargs)
+
+
+class TransferDriver(models.Model):
+    """
+    A driver assignment of a transfer, at most Transfer.vehicle_count. An
+    internal driver is a DRIVER user (with one of their vehicles), an
+    external driver has no account and is kept as name, phone, plate and
+    vehicle brand/model. The category is always the transfer's.
+    """
+    transfer = models.ForeignKey(
+        Transfer,
+        related_name='drivers',
+        on_delete=models.CASCADE
+    )
+    driver = models.ForeignKey(
+        User,
+        related_name='transfer_drivers',
+        on_delete=models.SET_NULL,
+        blank=True, null=True,
+        help_text='Empty for an external driver'
+    )
+    vehicle = models.ForeignKey(
+        Vehicle,
+        related_name='transfer_drivers',
+        on_delete=models.PROTECT,
+        blank=True, null=True
+    )
+    vehicle_category = models.ForeignKey(
+        VehicleCategory,
+        related_name='transfer_drivers',
+        on_delete=models.PROTECT,
+        blank=True, null=True,
+        help_text="The transfer's vehicle category at assignment"
+    )
+    driver_name = models.CharField(max_length=100, blank=True)
+    driver_phone = models.CharField(max_length=20, blank=True)
+    plate = models.CharField(max_length=20, blank=True)
+    vehicle_brand = models.CharField(max_length=50, blank=True)
+    vehicle_model = models.CharField(max_length=50, blank=True)
+    driver_price = models.DecimalField(**DECIMAL_10, blank=True, null=True)
+    driver_price_currency = models.CharField(
+        max_length=3,
+        choices=enums.Currency.choices,
+        blank=True, null=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['transfer', 'driver'],
+                condition=models.Q(driver__isnull=False),
+                name='unique_transfer_driver'
+            ),
+        ]
+
+    def __str__(self):
+        return f'transfer: {self.transfer_id}, driver: {self.driver_name}'
+
+    @model_property(only=['driver_id'])
+    def is_external(self) -> bool:
+        return self.driver_id is None
 
 
 class Leg(models.Model):
@@ -420,6 +464,13 @@ class Transaction(models.Model):
         max_length=10,
         choices=enums.TransactionStatus.choices,
         default=enums.TransactionStatus.PENDING
+    )
+    driver = models.ForeignKey(
+        User,
+        related_name='tips',
+        on_delete=models.SET_NULL,
+        blank=True, null=True,
+        help_text='Tip receiver (TIP and its refunds)'
     )
     parent = models.ForeignKey(
         'self',

@@ -25,16 +25,19 @@ CANCELLABLE_STATUSES = [Status.PENDING, Status.ACCEPTED]
 DELETABLE_STATUSES = [Status.EXPIRED, Status.WITHDRAWN]
 TIPPABLE_STATUSES = [Status.COMPLETED]
 STATUS_TRANSITIONS = {
-    Status.ACCEPTED: Status.STARTED,
-    Status.STARTED: Status.COMPLETED,
+    Status.ACCEPTED: [Status.STARTED, Status.COMPLETED],
+    Status.STARTED: [Status.COMPLETED],
 }
 ROUTE_FIELDS = [
     'pickup_time', 'distance', 'duration', 'passenger_count',
     'luggage_count', 'child_seat_count', 'needs_wheelchair'
 ]
 DISTRICT_NAME_FIELDS = ['pickup_district_name', 'dropoff_district_name']
-DRIVER_FIELDS = ['driver_name', 'driver_price', 'driver_price_currency']
-DRIVER_EDITABLE_STATUSES = [Status.PENDING, Status.ACCEPTED, Status.STARTED]
+EXTERNAL_DRIVER_FIELDS = [
+    'driver_name', 'driver_phone', 'plate', 'vehicle_brand', 'vehicle_model'
+]
+PRICE_FIELDS = ['driver_price', 'driver_price_currency']
+DRIVER_EDITABLE_STATUSES = [Status.ACCEPTED, Status.STARTED]
 IGNORED_CREATE_FIELDS = [*DISTRICT_NAME_FIELDS, 'legs']
 
 
@@ -273,21 +276,78 @@ def check_pickup_time(pickup_time):
     assert pickup_time > timezone.now(), dumps({'code': 'ERR016'})
 
 
-def set_driver_fields(transfer, data):
-    """driver_name is kept if a driver is assigned (set from the driver)."""
-    ignored = [] if transfer.driver_id is None else ['driver_name']
+def set_driver_fields(transfer_driver, data):
+    """
+    Price fields, and the name, phone, plate and vehicle brand/model of an
+    external driver (an internal driver's are taken from the user and the
+    vehicle).
+    """
+    external = transfer_driver.driver_id is None
+    keys = PRICE_FIELDS
+    if external:
+        keys = keys + EXTERNAL_DRIVER_FIELDS
     fields = {
-        key: value for key, value in utils.get_fields(data).items()
-        if key in DRIVER_FIELDS and key not in ignored
+        key: value.strip() if isinstance(value, str) else value
+        for key, value in utils.get_fields(data).items()
+        if key in keys
     }
-    utils.set_attributes(transfer, fields, set_nulls=False)
+    utils.set_attributes(transfer_driver, fields, set_nulls=False)
     if price := data.driver_price:
-        price = max(price, ZERO).quantize(ZERO)
-        transfer.driver_price = price
+        transfer_driver.driver_price = max(price, ZERO).quantize(ZERO)
+    if external:
+        valid = bool(transfer_driver.driver_name)
+        valid = valid and len(transfer_driver.driver_name) <= 100
+        valid = valid and len(transfer_driver.driver_phone) <= 20
+        valid = valid and len(transfer_driver.plate) <= 20
+        valid = valid and len(transfer_driver.vehicle_brand) <= 50
+        valid = valid and len(transfer_driver.vehicle_model) <= 50
+        assert valid, dumps({'code': 'ERR030'})
 
 
 def get_driver_name(driver):
     return f'{driver.first_name} {driver.last_name}'.strip()[:100]
+
+
+async def get_transfer_driver(user, id, statuses):
+    """Assignment of a transfer the user can see, in one of the statuses."""
+    transfer_drivers = models.TransferDriver.objects.select_related(
+        'transfer', 'transfer__state'
+    ).filter(pk=id, transfer__in=utils.get_transfers(user))
+    transfer_driver = await transfer_drivers.afirst()
+    assert transfer_driver, dumps({'code': 'ERR049'})
+    status = transfer_driver.transfer.status
+    assert status in statuses, dumps({'code': 'ERR014'})
+    return transfer_driver
+
+
+async def get_tip_driver(transfer, transfer_driver_id):
+    """
+    The internal driver to tip: the given assignment, or the only internal
+    driver of the transfer. ERR033 if there is none (external drivers can't
+    be tipped), ERR030 if there are several and none is given.
+    """
+    drivers = models.TransferDriver.objects.select_related('driver').filter(
+        transfer=transfer, driver__isnull=False
+    )
+    if transfer_driver_id:
+        drivers = drivers.filter(pk=transfer_driver_id)
+    transfer_drivers = [transfer_driver async for transfer_driver in drivers[:2]]
+    assert transfer_drivers, dumps({'code': 'ERR033'})
+    assert len(transfer_drivers) == 1, dumps({'code': 'ERR030'})
+    return transfer_drivers[0].driver
+
+
+async def notify_unassigned(user, transfer, driver_id):
+    await utils.notify_users(
+        [driver_id],
+        gettext_noop('Transfer Unassigned'),
+        gettext_noop('Transfer #%(id)s was unassigned from you'),
+        Action.TRANSFER_CANCELLED,
+        transfer,
+        sender_id=user.id
+    )
+    args = (user.id, Action.TRANSFER_CANCELLED, [driver_id])
+    await utils.broadcast(*args, transfer_id=str(transfer.id))
 
 
 def clear_vehicle_selection(transfer):
@@ -355,29 +415,11 @@ class Mutation:
             key: value for key, value in utils.get_fields(data).items()
             if value is not None
         }
-        driver_fields = [key for key in fields if key in DRIVER_FIELDS]
-        if driver_fields:
-            allowed = user.role in utils.DISPATCH_ROLES
-            assert allowed, dumps({'code': 'ERR001'})
-        driver_only = bool(driver_fields)
-        driver_only = driver_only and len(driver_fields) == len(fields)
-        statuses = EDITABLE_STATUSES
-        if driver_only:
-            statuses = DRIVER_EDITABLE_STATUSES
-        transfer = await get_transfer(user, data.id, statuses, expand)
-        set_driver_fields(transfer, data)
-        if driver_only:
-            await transfer.asave()
-            activate(user.language)
-            return outputs.TransferResponse(
-                transfer=transfer,
-                vehicle_options=await get_vehicle_options(transfer)
-            )
-        ignored = ['id', 'legs', *DISTRICT_NAME_FIELDS, *DRIVER_FIELDS]
+        transfer = await get_transfer(user, data.id, EDITABLE_STATUSES, expand)
+        ignored = ['id', 'legs', *DISTRICT_NAME_FIELDS]
         utils.set_attributes(transfer, data, ignored=ignored, set_nulls=False)
         check_transfer(transfer)
         check_pickup_time(transfer.pickup_time)
-        # legs given (even []): the stops are replaced
         legs_given = data.legs is not sb.UNSET and data.legs is not None
         if legs_given:
             check_legs(data.legs)
@@ -443,57 +485,96 @@ class Mutation:
         root, info: Info,
         data: inputs.AssignDriver
     ) -> outputs.Transfer:
-        """ACCEPTED (reassignment) transfer, driver must be available."""
+        """
+        Adds a driver to an ACCEPTED transfer, at most its vehicleCount
+        (ERR048). With driverId an internal driver (one of availableDrivers)
+        and one of their suitable vehicles, without it an external driver
+        (driverName required). The assignment's vehicleCategory is the
+        transfer's. The transfer's status does not change.
+        """
         user = info.context['user']
         expand = ['state']
         args = (user, data.id, ASSIGNABLE_STATUSES, expand)
         transfer = await get_transfer(*args)
-        drivers = User.objects.available_drivers(transfer)
-        drivers = drivers.filter(pk=data.driver_id)
-        assert await drivers.aexists(), dumps({'code': 'ERR015'})
-        vehicles = models.Vehicle.objects.suitable_for(transfer)
-        vehicles = vehicles.filter(driver_id=data.driver_id)
-        if data.vehicle_id:
-            vehicles = vehicles.filter(pk=data.vehicle_id)
-        vehicle = await vehicles.select_related('driver').afirst()
-        assert vehicle, dumps({'code': 'ERR027'})
-        previous_driver_id = transfer.driver_id
-        transfer.driver_id = vehicle.driver_id
-        transfer.vehicle = vehicle
-        transfer.driver_name = get_driver_name(vehicle.driver)
-        set_driver_fields(transfer, data)
+        count = await transfer.drivers.acount()
+        assert count < transfer.vehicle_count, dumps({'code': 'ERR048'})
+        transfer_driver = models.TransferDriver(
+            transfer=transfer,
+            vehicle_category_id=transfer.vehicle_category_id
+        )
+        driver_id = data.driver_id or None
+        if driver_id:
+            drivers = User.objects.available_drivers(transfer)
+            drivers = drivers.filter(pk=driver_id)
+            assert await drivers.aexists(), dumps({'code': 'ERR015'})
+            vehicles = models.Vehicle.objects.suitable_for(transfer)
+            vehicles = vehicles.filter(driver_id=driver_id)
+            if data.vehicle_id:
+                vehicles = vehicles.filter(pk=data.vehicle_id)
+            vehicle = await vehicles.select_related('driver').afirst()
+            assert vehicle, dumps({'code': 'ERR027'})
+            transfer_driver.driver = vehicle.driver
+            transfer_driver.vehicle = vehicle
+            transfer_driver.driver_name = get_driver_name(vehicle.driver)
+            transfer_driver.plate = vehicle.plate
+            transfer_driver.vehicle_brand = vehicle.brand
+            transfer_driver.vehicle_model = vehicle.model
+        else:
+            assert not data.vehicle_id, dumps({'code': 'ERR030'})
+        set_driver_fields(transfer_driver, data)
         if user.role == Role.OPERATOR:
             transfer.operator = user
-        await transfer.asave()
-        driver_id, customer_id = transfer.driver_id, transfer.customer_id
-        if previous_driver_id and previous_driver_id != driver_id:
+            await transfer.asave(update_fields=['operator', 'updated_at'])
+        await transfer_driver.asave()
+        receiver_ids = [transfer.customer_id]
+        if driver_id:
+            receiver_ids.append(transfer_driver.driver_id)
             await utils.notify_users(
-                [previous_driver_id],
-                gettext_noop('Transfer Unassigned'),
-                gettext_noop('Transfer #%(id)s was assigned to another driver'),
-                Action.TRANSFER_CANCELLED,
+                [transfer_driver.driver_id],
+                gettext_noop('New Transfer'),
+                gettext_noop('Transfer #%(id)s was assigned to you'),
+                Action.TRANSFER_ASSIGNED,
                 transfer,
                 sender_id=user.id
             )
-            args = (user.id, Action.TRANSFER_CANCELLED, [previous_driver_id])
-            await utils.broadcast(*args, transfer_id=str(transfer.id))
-        await utils.notify_users(
-            [driver_id],
-            gettext_noop('New Transfer'),
-            gettext_noop('Transfer #%(id)s was assigned to you'),
-            Action.TRANSFER_ASSIGNED,
-            transfer,
-            sender_id=user.id
-        )
-        # await utils.notify_users(
-        #     [customer_id],
-        #     gettext_noop('Driver Assigned'),
-        #     gettext_noop('A driver was assigned to transfer #%(id)s'),
-        #     Action.TRANSFER_ASSIGNED,
-        #     transfer,
-        #     sender_id=user.id
-        # )
-        args = (user.id, Action.TRANSFER_ASSIGNED, [driver_id, customer_id])
+        args = (user.id, Action.TRANSFER_ASSIGNED, receiver_ids)
+        await utils.broadcast(*args, transfer_id=str(transfer.id))
+        return transfer
+
+    @sb.mutation(description='OPERATOR, ADMIN, STAFF')
+    @permission_required('OPERATOR', 'ADMIN', 'STAFF')
+    async def update_transfer_driver(
+        root, info: Info,
+        data: inputs.UpdateTransferDriver
+    ) -> outputs.TransferDriver:
+        """
+        ACCEPTED or STARTED transfer. Price fields, and the name, phone,
+        plate and vehicle brand/model of an external driver. To change the driver, remove the
+        assignment and assign again.
+        """
+        user = info.context['user']
+        args = (user, data.id, DRIVER_EDITABLE_STATUSES)
+        transfer_driver = await get_transfer_driver(*args)
+        set_driver_fields(transfer_driver, data)
+        await transfer_driver.asave()
+        return transfer_driver
+
+    @sb.mutation(description='OPERATOR, ADMIN, STAFF')
+    @permission_required('OPERATOR', 'ADMIN', 'STAFF')
+    async def remove_transfer_driver(
+        root, info: Info,
+        id: sb.ID
+    ) -> outputs.Transfer:
+        """ACCEPTED transfer, an internal driver is notified."""
+        user = info.context['user']
+        args = (user, id, ASSIGNABLE_STATUSES)
+        transfer_driver = await get_transfer_driver(*args)
+        transfer = transfer_driver.transfer
+        driver_id = transfer_driver.driver_id
+        await transfer_driver.adelete()
+        if driver_id:
+            await notify_unassigned(user, transfer, driver_id)
+        args = (user.id, Action.TRANSFER_ASSIGNED, [transfer.customer_id])
         await utils.broadcast(*args, transfer_id=str(transfer.id))
         return transfer
 
@@ -503,15 +584,18 @@ class Mutation:
         root, info: Info,
         data: inputs.UpdateTransferStatus
     ) -> outputs.Transfer:
-        """ACCEPTED -> STARTED -> COMPLETED, drivers only their transfers."""
+        """
+        ACCEPTED -> STARTED -> COMPLETED or ACCEPTED -> COMPLETED (start and
+        end at once), drivers only their transfers.
+        """
         user = info.context['user']
         statuses = list(STATUS_TRANSITIONS)
         transfer = await get_transfer(user, data.id, statuses)
-        valid = STATUS_TRANSITIONS[transfer.status] == data.status
+        valid = data.status in STATUS_TRANSITIONS[transfer.status]
         assert valid, dumps({'code': 'ERR014'})
         transfer.status = data.status
         await transfer.asave()
-        receiver_ids = utils.get_receiver_ids(user.id, transfer)
+        receiver_ids = await utils.get_receiver_ids(user.id, transfer)
         await utils.notify_users(
             receiver_ids,
             gettext_noop('Transfer Status Updated'),
@@ -547,7 +631,7 @@ class Mutation:
             transfer.status = Status.CANCELLED
             action = Action.TRANSFER_CANCELLED
         await transfer.asave()
-        receiver_ids = utils.get_receiver_ids(user.id, transfer)
+        receiver_ids = await utils.get_receiver_ids(user.id, transfer)
         await utils.notify_users(
             receiver_ids,
             gettext_noop('Transfer Cancelled'),
@@ -582,16 +666,19 @@ class Mutation:
         data: inputs.TipDriver
     ) -> outputs.PaymentResponse:
         """
-        Tip link for a COMPLETED transfer. The TIP transaction is created and
-        the driver is notified when the payment service reports success.
+        Tip link for a COMPLETED transfer, to one of its internal drivers
+        (transferDriverId, required if it has more than one). The TIP
+        transaction is created and the driver is notified when the payment
+        service reports success.
         """
         user = info.context['user']
-        expand = ['customer', 'driver', 'state']
+        expand = ['customer', 'state']
         transfer = await get_transfer(user, data.id, TIPPABLE_STATUSES, expand)
         amount = data.amount.quantize(ZERO)
-        valid = amount > ZERO and transfer.driver_id and transfer.currency
+        valid = amount > ZERO and transfer.currency
         assert valid, dumps({'code': 'ERR033'})
-        await psp.get_tip_link(transfer, amount)
+        driver = await get_tip_driver(transfer, data.transfer_driver_id)
+        await psp.get_tip_link(transfer, amount, driver)
         await transfer.asave(update_fields=['psp_data', 'updated_at'])
         return get_payment_response(
             transfer.psp_data['tip_link'],

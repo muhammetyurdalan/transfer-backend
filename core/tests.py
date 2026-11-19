@@ -48,8 +48,9 @@ mutation($data: CreateVehicle!) {
 }
 '''
 TRANSFER_FIELDS = '''
-  id status price currency vehicleCategoryId driverId vehicleId operatorId
+  id status price currency vehicleCategoryId operatorId
   stateId pickupDistrictId dropoffDistrictId
+  drivers { id driverId vehicleId isExternal }
 '''
 OPTION_FIELDS = '''
   vehicleCategory { id name } count distance duration price currency
@@ -87,19 +88,25 @@ query($transferId: ID!) { availableVehicles(transferId: $transferId) { id driver
 ASSIGN_DRIVER = f'''
 mutation($data: AssignDriver!) {{ assignDriver(data: $data) {{ {TRANSFER_FIELDS} }} }}
 '''
-DRIVER_FIELDS = 'driverName driverPrice driverPriceCurrency'
+DRIVER_FIELDS = '''
+  id driverId vehicleId vehicleCategoryId isExternal driverName driverPhone
+  plate vehicleBrand vehicleModel driverPrice driverPriceCurrency
+'''
 ASSIGN_DRIVER_WITH_PRICE = f'''
 mutation($data: AssignDriver!) {{
-  assignDriver(data: $data) {{ {TRANSFER_FIELDS} {DRIVER_FIELDS} }}
+  assignDriver(data: $data) {{ id drivers {{ {DRIVER_FIELDS} }} }}
 }}
 '''
 UPDATE_TRANSFER_DRIVER = f'''
-mutation($data: UpdateTransfer!) {{
-  updateTransfer(data: $data) {{ transfer {{ {DRIVER_FIELDS} }} }}
+mutation($data: UpdateTransferDriver!) {{
+  updateTransferDriver(data: $data) {{ {DRIVER_FIELDS} }}
 }}
 '''
+REMOVE_TRANSFER_DRIVER = f'''
+mutation($id: ID!) {{ removeTransferDriver(id: $id) {{ {TRANSFER_FIELDS} }} }}
+'''
 TRANSFER_DRIVER = f'''
-query($id: ID!) {{ transfer(id: $id) {{ id {DRIVER_FIELDS} }} }}
+query($id: ID!) {{ transfer(id: $id) {{ id drivers {{ {DRIVER_FIELDS} }} }} }}
 '''
 UPDATE_TRANSFER_STATUS = f'''
 mutation($data: UpdateTransferStatus!) {{
@@ -785,70 +792,145 @@ class DriverPriceTests(GraphQLTestCase):
     async def test_assign_driver_sets_driver_fields(self):
         transfer = await self.orm_transfer()
         data = {'id': str(transfer.id), 'driverId': str(self.driver.id),
-                'driverPrice': '150.5', 'driverPriceCurrency': 'EUR'}
+                'driverName': 'Ignored', 'driverPhone': '555',
+                'vehicleBrand': 'Ignored', 'driverPrice': '150.5',
+                'driverPriceCurrency': 'EUR'}
         result = await self.execute(
             ASSIGN_DRIVER_WITH_PRICE, {'data': data}, self.operator
         )
-        assigned = self.ok(result, 'assignDriver')
-        self.assertEqual(assigned['driverName'], 'driver Test')
-        self.assertEqual(assigned['driverPrice'], '150.50')
-        self.assertEqual(assigned['driverPriceCurrency'], 'EUR')
+        [assigned] = self.ok(result, 'assignDriver')['drivers']
+        # An internal driver's name, plate and vehicle come from the user and
+        # the vehicle, the category is the transfer's
+        self.assertEqual(assigned, {
+            'id': assigned['id'], 'driverId': str(self.driver.id),
+            'vehicleId': str(self.driver_vehicle.id),
+            'vehicleCategoryId': str(transfer.vehicle_category_id),
+            'isExternal': False, 'driverName': 'driver Test',
+            'driverPhone': '', 'plate': '34ABC01', 'vehicleBrand': 'Toyota',
+            'vehicleModel': 'Corolla', 'driverPrice': '150.50',
+            'driverPriceCurrency': 'EUR'
+        })
         # A negative price is saved as zero
-        data['driverPrice'] = '-1'
-        result = await self.execute(
-            ASSIGN_DRIVER_WITH_PRICE, {'data': data}, self.operator
-        )
-        self.assertEqual(self.ok(result, 'assignDriver')['driverPrice'], '0.00')
-
-    async def test_update_transfer_driver_fields(self):
-        transfer = await self.orm_transfer(status='PENDING')
-        data = {'id': str(transfer.id), 'driverName': 'Ali',
-                'driverPrice': '100', 'driverPriceCurrency': 'TRY'}
-        result = await self.execute(
-            UPDATE_TRANSFER, {'data': data}, self.customer
-        )
-        self.assertEqual(self.error_code(result), 'ERR001')
+        data = {'id': assigned['id'], 'driverPrice': '-1'}
         result = await self.execute(
             UPDATE_TRANSFER_DRIVER, {'data': data}, self.operator
         )
-        updated = self.ok(result, 'updateTransfer')['transfer']
+        updated = self.ok(result, 'updateTransferDriver')
+        self.assertEqual(updated['driverPrice'], '0.00')
+
+    async def test_assign_external_driver(self):
+        transfer = await self.orm_transfer()
+        data = {'id': str(transfer.id), 'driverPhone': '555'}
+        result = await self.execute(
+            ASSIGN_DRIVER_WITH_PRICE, {'data': data}, self.operator
+        )
+        # An external driver needs a name, and has no vehicle of ours
+        self.assertEqual(self.error_code(result), 'ERR030')
+        data.update(driverName=' Ali ', vehicleId=str(self.driver_vehicle.id))
+        result = await self.execute(
+            ASSIGN_DRIVER_WITH_PRICE, {'data': data}, self.operator
+        )
+        self.assertEqual(self.error_code(result), 'ERR030')
+        del data['vehicleId']
+        data.update(plate='34XYZ99', driverPrice='100', vehicleModel='x' * 51)
+        result = await self.execute(
+            ASSIGN_DRIVER_WITH_PRICE, {'data': data}, self.operator
+        )
+        self.assertEqual(self.error_code(result), 'ERR030')
+        data.update(vehicleBrand=' Mercedes ', vehicleModel='Vito')
+        result = await self.execute(
+            ASSIGN_DRIVER_WITH_PRICE, {'data': data}, self.operator
+        )
+        [assigned] = self.ok(result, 'assignDriver')['drivers']
+        self.assertEqual(assigned, {
+            'id': assigned['id'], 'driverId': None, 'vehicleId': None,
+            'vehicleCategoryId': str(transfer.vehicle_category_id),
+            'isExternal': True, 'driverName': 'Ali', 'driverPhone': '555',
+            'plate': '34XYZ99', 'vehicleBrand': 'Mercedes',
+            'vehicleModel': 'Vito', 'driverPrice': '100.00',
+            'driverPriceCurrency': None
+        })
+        # The status does not change with the assignment
+        transfer = await models.Transfer.objects.aget(pk=transfer.pk)
+        self.assertEqual(transfer.status, 'ACCEPTED')
+        # vehicleCount is 1: no more drivers
+        data = {'id': str(transfer.id), 'driverId': str(self.driver.id)}
+        result = await self.execute(ASSIGN_DRIVER, {'data': data}, self.operator)
+        self.assertEqual(self.error_code(result), 'ERR048')
+
+    async def test_update_transfer_driver(self):
+        transfer = await self.orm_transfer()
+        external = await models.TransferDriver.objects.acreate(
+            transfer=transfer, driver_name='Ali'
+        )
+        internal = await models.TransferDriver.objects.acreate(
+            transfer=transfer, driver=self.driver, driver_name='driver Test'
+        )
+        data = {'id': str(external.id), 'driverName': 'Veli',
+                'driverPhone': '555', 'plate': '06AB12', 'driverPrice': '100',
+                'driverPriceCurrency': 'TRY'}
+        result = await self.execute(
+            UPDATE_TRANSFER_DRIVER, {'data': data}, self.customer
+        )
+        self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.execute(
+            UPDATE_TRANSFER_DRIVER, {'data': data}, self.other_operator
+        )
+        self.assertEqual(self.error_code(result), 'ERR049')
+        result = await self.execute(
+            UPDATE_TRANSFER_DRIVER, {'data': data}, self.operator
+        )
+        updated = self.ok(result, 'updateTransferDriver')
         self.assertEqual(
-            updated,
-            {'driverName': 'Ali', 'driverPrice': '100.00',
-             'driverPriceCurrency': 'TRY'}
+            (updated['driverName'], updated['driverPhone'], updated['plate'],
+             updated['driverPrice'], updated['driverPriceCurrency']),
+            ('Veli', '555', '06AB12', '100.00', 'TRY')
         )
-        # After the assignment: driver fields only, name kept
-        await models.Transfer.objects.filter(pk=transfer.id).aupdate(
-            status='ACCEPTED', driver=self.driver, driver_name='driver Test'
-        )
-        data = {'id': str(transfer.id), 'driverName': 'Veli',
-                'driverPrice': '120'}
+        # An internal driver's name is kept, the price changes
+        data['id'] = str(internal.id)
+        data['driverPrice'] = '120'
         result = await self.execute(
             UPDATE_TRANSFER_DRIVER, {'data': data}, self.admin
         )
-        updated = self.ok(result, 'updateTransfer')['transfer']
-        self.assertEqual(updated['driverName'], 'driver Test')
-        self.assertEqual(updated['driverPrice'], '120.00')
-        data = {'id': str(transfer.id), 'driverPrice': '130', 'note': 'x'}
-        result = await self.execute(
-            UPDATE_TRANSFER_DRIVER, {'data': data}, self.admin
+        updated = self.ok(result, 'updateTransferDriver')
+        self.assertEqual(
+            (updated['driverName'], updated['driverPhone'],
+             updated['driverPrice']),
+            ('driver Test', '', '120.00')
         )
-        self.assertEqual(self.error_code(result), 'ERR014')
+        # Still editable while STARTED, not after
+        for status, code in (('STARTED', None), ('COMPLETED', 'ERR014')):
+            await models.Transfer.objects.filter(pk=transfer.pk).aupdate(
+                status=status
+            )
+            result = await self.execute(
+                UPDATE_TRANSFER_DRIVER, {'data': data}, self.admin
+            )
+            if code:
+                self.assertEqual(self.error_code(result), code)
+            else:
+                self.ok(result, 'updateTransferDriver')
 
     async def test_driver_price_hidden_from_customer(self):
-        transfer = await self.orm_transfer(
-            driver_name='Ali', driver_price='100', driver_price_currency='TRY'
+        transfer = await self.orm_transfer()
+        await models.TransferDriver.objects.acreate(
+            transfer=transfer, driver_name='Ali', driver_phone='555',
+            plate='34XYZ99', driver_price='100', driver_price_currency='TRY'
         )
         variables = {'id': str(transfer.id)}
         result = await self.execute(TRANSFER_DRIVER, variables, self.customer)
-        # The customer sees the driver name, never the driver's price
+        # The customer sees the name and plate, never the price and phone
+        [driver] = self.ok(result, 'transfer')['drivers']
         self.assertEqual(
-            self.ok(result, 'transfer'),
-            {'id': str(transfer.id), 'driverName': 'Ali', 'driverPrice': None,
-             'driverPriceCurrency': None}
+            (driver['driverName'], driver['plate'], driver['driverPhone'],
+             driver['driverPrice'], driver['driverPriceCurrency']),
+            ('Ali', '34XYZ99', None, None, None)
         )
         result = await self.execute(TRANSFER_DRIVER, variables, self.operator)
-        self.assertEqual(self.ok(result, 'transfer')['driverName'], 'Ali')
+        [driver] = self.ok(result, 'transfer')['drivers']
+        self.assertEqual(
+            (driver['driverPhone'], driver['driverPrice']), ('555', '100.00')
+        )
 
 
 class PayoutTests(GraphQLTestCase):
@@ -904,11 +986,13 @@ class PayoutTests(GraphQLTestCase):
     async def test_transfer_transactions_scoped_by_role(self):
         payment = await self.create_payment(self.operator)
         transfer = await models.Transfer.objects.aget(pk=payment.transfer_id)
-        transfer.driver = self.driver
-        await transfer.asave()
+        await models.TransferDriver.objects.acreate(
+            transfer=transfer, driver=self.driver
+        )
         tip = await models.Transaction.objects.acreate(
             transfer=transfer, user=self.customer, category='TIP',
-            order_amount='10', currency='TRY', order_time=timezone.now()
+            driver=self.driver, order_amount='10', currency='TRY',
+            order_time=timezone.now()
         )
         query = '''
         query($id: ID!) { transfer(id: $id) { transactions { id } } }
@@ -1618,13 +1702,17 @@ class AvailableDriverTests(GraphQLTestCase):
         return {int(user['id']) for user in drivers['users']}
 
     async def busy_transfer(self, driver, pickup_time, duration=60):
-        return await models.Transfer.objects.acreate(
-            customer=self.other_customer, driver=driver, status='ACCEPTED',
+        transfer = await models.Transfer.objects.acreate(
+            customer=self.other_customer, status='ACCEPTED',
             vehicle_category=self.sedan, pickup_time=pickup_time,
             duration=duration, distance='10', passenger_name='X',
             pickup_address='A', pickup_latitude=0, pickup_longitude=0,
             dropoff_address='B', dropoff_latitude=0, dropoff_longitude=0
         )
+        await models.TransferDriver.objects.acreate(
+            transfer=transfer, driver=driver
+        )
+        return transfer
 
     async def test_available_drivers(self):
         transfer = await self.paid_transfer()
@@ -1687,9 +1775,11 @@ class AssignmentTests(GraphQLTestCase):
         self.assertEqual(self.error_code(result), 'ERR001')
         result = await self.execute(ASSIGN_DRIVER, {'data': data}, self.operator)
         assigned = self.ok(result, 'assignDriver')
-        self.assertEqual(assigned['driverId'], str(self.driver.id))
-        self.assertEqual(assigned['vehicleId'], str(self.driver_vehicle.id))
+        [driver] = assigned['drivers']
+        self.assertEqual(driver['driverId'], str(self.driver.id))
+        self.assertEqual(driver['vehicleId'], str(self.driver_vehicle.id))
         self.assertEqual(assigned['operatorId'], str(self.operator.id))
+        self.assertEqual(assigned['status'], 'ACCEPTED')
         notifications = models.Notification.objects.filter(
             action='TRANSFER_ASSIGNED'
         )
@@ -1703,21 +1793,72 @@ class AssignmentTests(GraphQLTestCase):
         result = await self.execute(ASSIGN_DRIVER, {'data': data}, self.operator)
         self.assertEqual(self.error_code(result), 'ERR015')
 
-    async def test_reassign_notifies_previous_driver(self):
+    async def test_remove_driver_notifies_and_frees_the_slot(self):
         transfer = await self.assigned_transfer()
-        data = {'id': str(transfer.id), 'driverId': str(self.other_driver.id)}
-        result = await self.execute(ASSIGN_DRIVER, {'data': data}, self.admin)
-        self.assertEqual(
-            self.ok(result, 'assignDriver')['driverId'], str(self.other_driver.id)
+        assignment = await transfer.drivers.aget()
+        variables = {'id': str(assignment.id)}
+        result = await self.execute(
+            REMOVE_TRANSFER_DRIVER, variables, self.other_operator
         )
+        self.assertEqual(self.error_code(result), 'ERR049')
+        result = await self.execute(REMOVE_TRANSFER_DRIVER, variables, self.admin)
+        self.assertEqual(self.ok(result, 'removeTransferDriver')['drivers'], [])
         notifications = models.Notification.objects.filter(
             user=self.driver, action='TRANSFER_CANCELLED'
         )
         self.assertTrue(await notifications.aexists())
+        # The removed driver no longer sees the transfer
+        result = await self.execute(TRANSFER, {'id': str(transfer.id)}, self.driver)
+        self.assertIsNone(self.ok(result, 'transfer'))
+        data = {'id': str(transfer.id), 'driverId': str(self.other_driver.id)}
+        result = await self.execute(ASSIGN_DRIVER, {'data': data}, self.admin)
+        [driver] = self.ok(result, 'assignDriver')['drivers']
+        self.assertEqual(driver['driverId'], str(self.other_driver.id))
+
+    async def test_multiple_drivers(self):
+        await models.State.objects.filter(pk=self.turkey.pk).aupdate(
+            allow_multiple_vehicles=True
+        )
+        transfer = await self.paid_transfer(passengerCount=5)
+        self.assertEqual(transfer.vehicle_count, 2)
+        data = {'id': str(transfer.id), 'driverId': str(self.driver.id)}
+        result = await self.execute(ASSIGN_DRIVER, {'data': data}, self.operator)
+        self.ok(result, 'assignDriver')
+        # Already assigned: not available again, nor is their vehicle
+        result = await self.execute(ASSIGN_DRIVER, {'data': data}, self.operator)
+        self.assertEqual(self.error_code(result), 'ERR015')
+        result = await self.execute(
+            AVAILABLE_DRIVERS, {'transferId': str(transfer.id)}, self.operator
+        )
+        users = self.ok(result, 'availableDrivers')['users']
+        self.assertEqual([u['id'] for u in users], [str(self.other_driver.id)])
+        data = {'id': str(transfer.id), 'driverName': 'External'}
+        result = await self.execute(ASSIGN_DRIVER, {'data': data}, self.operator)
+        drivers = self.ok(result, 'assignDriver')['drivers']
+        self.assertEqual(
+            [(d['driverId'], d['isExternal']) for d in drivers],
+            [(str(self.driver.id), False), (None, True)]
+        )
+        data = {'id': str(transfer.id), 'driverId': str(self.other_driver.id)}
+        result = await self.execute(ASSIGN_DRIVER, {'data': data}, self.operator)
+        self.assertEqual(self.error_code(result), 'ERR048')
+        # Filters by any of its drivers
+        query = '''
+        query($filters: TransferFilter) { transfers(filters: $filters) { count } }
+        '''
+        for filters, count in (
+            ({'driverId': str(self.driver.id)}, 1),
+            ({'driverId': str(self.other_driver.id)}, 0),
+            ({'vehicleId': str(self.driver_vehicle.id)}, 1),
+            ({'hasDriver': True}, 1),
+            ({'hasDriver': False}, 0),
+        ):
+            result = await self.execute(query, {'filters': filters}, self.admin)
+            self.assertEqual(self.ok(result, 'transfers')['count'], count, filters)
 
     async def test_status_transitions(self):
         transfer = await self.assigned_transfer()
-        data = {'id': str(transfer.id), 'status': 'COMPLETED'}
+        data = {'id': str(transfer.id), 'status': 'ACCEPTED'}
         result = await self.execute(UPDATE_TRANSFER_STATUS, {'data': data}, self.driver)
         self.assertEqual(self.error_code(result), 'ERR014')
         data['status'] = 'STARTED'
@@ -1728,6 +1869,17 @@ class AssignmentTests(GraphQLTestCase):
         result = await self.execute(UPDATE_TRANSFER_STATUS, {'data': data}, self.driver)
         self.assertEqual(self.ok(result, 'updateTransferStatus')['status'], 'STARTED')
         data['status'] = 'COMPLETED'
+        result = await self.execute(UPDATE_TRANSFER_STATUS, {'data': data}, self.driver)
+        self.assertEqual(
+            self.ok(result, 'updateTransferStatus')['status'], 'COMPLETED'
+        )
+        # A completed transfer can't change again
+        result = await self.execute(UPDATE_TRANSFER_STATUS, {'data': data}, self.driver)
+        self.assertEqual(self.error_code(result), 'ERR014')
+
+    async def test_start_and_end_at_once(self):
+        transfer = await self.assigned_transfer()
+        data = {'id': str(transfer.id), 'status': 'COMPLETED'}
         result = await self.execute(UPDATE_TRANSFER_STATUS, {'data': data}, self.driver)
         self.assertEqual(
             self.ok(result, 'updateTransferStatus')['status'], 'COMPLETED'
@@ -1806,6 +1958,43 @@ class PaymentTests(GraphQLTestCase):
             status='COMPLETED'
         )
         return transfer
+
+    async def test_tip_with_several_drivers(self):
+        transfer = await self.completed_transfer()
+        first = await transfer.drivers.aget()
+        await models.TransferDriver.objects.acreate(
+            transfer=transfer, driver_name='External'
+        )
+        external = await transfer.drivers.aget(driver__isnull=True)
+        second = await models.TransferDriver.objects.acreate(
+            transfer=transfer, driver=self.other_driver
+        )
+        data = {'id': str(transfer.id), 'amount': '20'}
+        # Two internal drivers: which one must be given
+        result = await self.execute(TIP_DRIVER, {'data': data}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR030')
+        # External drivers can't be tipped
+        data['transferDriverId'] = str(external.id)
+        result = await self.execute(TIP_DRIVER, {'data': data}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR033')
+        data['transferDriverId'] = str(second.id)
+        result = await self.execute(TIP_DRIVER, {'data': data}, self.customer)
+        self.ok(result, 'tipDriver')
+        await self.psp_return({
+            'action': 'TIP_RETURN', 'id': str(transfer.id), 'success': True
+        })
+        tip = await models.Transaction.objects.aget(category='TIP')
+        self.assertEqual(tip.driver_id, self.other_driver.id)
+        notifications = models.Notification.objects.filter(
+            action='TIP_PAYMENT_SUCCESS'
+        )
+        user_ids = {n.user_id async for n in notifications}
+        self.assertEqual(user_ids, {self.other_driver.id})
+        # Each driver sees only their own tips
+        for user, count in ((self.other_driver, 1), (self.driver, 0)):
+            result = await self.execute(TRANSACTIONS, user=user)
+            self.assertEqual(self.ok(result, 'transactions')['count'], count)
+        self.assertEqual(first.driver_id, self.driver.id)
 
     async def test_tip_driver(self):
         transfer = await self.assigned_transfer()
@@ -2060,13 +2249,15 @@ class MessageTests(GraphQLTestCase):
 
     async def test_admin_and_staff_join_every_conversation(self):
         transfer = await models.Transfer.objects.acreate(
-            customer=self.customer, operator=self.operator,
-            driver=self.driver, status='ACCEPTED',
+            customer=self.customer, operator=self.operator, status='ACCEPTED',
             vehicle_category=self.sedan, state=self.turkey,
             pickup_time=timezone.now() + timedelta(days=1),
             duration=30, distance='10', passenger_name='X',
             pickup_address='A', pickup_latitude=0, pickup_longitude=0,
             dropoff_address='B', dropoff_latitude=0, dropoff_longitude=0
+        )
+        await models.TransferDriver.objects.acreate(
+            transfer=transfer, driver=self.driver
         )
         await User.objects.acreate(
             email='admin2@example.com', role='ADMIN', first_name='Off',
