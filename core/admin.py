@@ -6,6 +6,7 @@ from django.contrib.auth.models import Group
 from django.core.exceptions import ValidationError
 from modeltranslation.admin import TranslationAdmin
 from core.models import (
+    Reason,
     City, District, Invitation, Leg, Message, Notification, State, ThroughMessage,
     Transaction, Transfer, TransferDriver, User, Vehicle, VehicleCategory
 )
@@ -140,6 +141,16 @@ class VehicleCategoryAdmin(TranslationAdmin):
     ]
     list_filter = ['is_active', 'currency', 'is_wheelchair_accessible']
     search_fields = ['name']
+
+
+@admin.register(Reason)
+class ReasonAdmin(TranslationAdmin):
+    list_display = [
+        'id', 'code', 'category', 'description', 'order', 'is_active',
+        'created_at'
+    ]
+    list_filter = ['category', 'is_active']
+    search_fields = ['code', 'description']
 
 
 @admin.register(Vehicle)

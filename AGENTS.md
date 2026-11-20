@@ -57,7 +57,7 @@ availableDrivers / availableVehicles ──► assignDriver (en fazla vehicle_co
    │                                        status değişmez (ACCEPTED kalır), iç sürücüye ve müşteriye TRANSFER_ASSIGNED
 updateTransferStatus ──► STARTED ──► COMPLETED ──► tipDriver
    │                    (ACCEPTED ──► COMPLETED de olur: "başlat ve bitir" tek adımda) ──► /createTipLink ──► TIP_RETURN
-cancelTransfer (PENDING/PAID/ASSIGNED) ──► ödenmişse /refundPayment, değilse /expirePaymentLink
+cancelTransfer(id, cancellationReasonId | cancellationReasonText) (PENDING/ACCEPTED, sebep zorunlu) ──► ödenmişse /refundPayment, değilse /expirePaymentLink
 her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIRED + /expirePaymentLink
 ```
 
@@ -122,6 +122,21 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
   - **`retryRefund(id)`** (CUSTOMER, OPERATOR, ADMIN, STAFF; kapsam `transactions` sorgusu gibi, bulunamazsa `ERR034`): `PENDING` veya `FAILED` iadeyi aynı kayıtla tekrar gönderir. `COMPLETED` iade için `ERR042`.
 - **İptal cezası:** `CANCEL_PENALTY_RULES` (settings, varsayılan `[]` = her zaman tam iade). Sadece müşterinin iptalinde uygulanır, OPERATOR/ADMIN/STAFF iptali tam iade.
 
+### 4.3.1 İptal sebebi (`Reason`, `schemas/reason.py`)
+- Ottobus'taki hazır sebep listesi mantığı, ama transfere metin kopyalanmaz, **FK** ile bağlanır.
+- **`Reason`**:
+  - `code`: benzersiz snake_case anahtar (`[a-z0-9]+(_[a-z0-9]+)*`, en fazla 50; geçersizse `ERR030`, varsa `ERR053`). Filtrelerde kullanılır.
+  - `category` (`ReasonCategory`): `CUSTOMER_TERMINATION` (müşteri ödenmemiş transferden vazgeçer), `CUSTOMER_CANCELLATION` (müşteri ödenmiş transferi iptal eder), `OPERATOR_CANCELLATION` (OPERATOR/ADMIN/STAFF), `DRIVER_CANCELLATION` (şimdilik kullanılmıyor, DRIVER iptal edemez), `DRIVER_DISAPPROVAL`/`VEHICLE_DISAPPROVAL` (sürücü/araç onayının reddi için, henüz bir akış yok).
+  - `description` çok dilli (`description_en` zorunlu, `tr`/`de`/`ru` boşsa `en`'e düşer, en fazla 200). `order` (sıralama `category`, `order`, `id`). `is_active` (varsayılan true).
+- **Sorgu/mutation:** `reasons(category?, code?, isActive?, language?)` ALL (giriş gerekli), `description` `language`'da veya kullanıcının dilinde. Pasif sebepleri sadece ADMIN/STAFF görür (`isActive` ile süzer), diğer rollere sadece aktifler döner. `createReason`/`updateReason`/`deleteReason` ADMIN, STAFF; bulunamayan `ERR050`. Transferde kullanılan sebep silinemez (`PROTECT`, `ERR054`), pasifleştirilir.
+- **`cancelTransfer(data: CancelTransfer)`**: `id` + **ya** `cancellationReasonId` **ya** `cancellationReasonText` (ikisi de yoksa/metin boşsa `ERR051`, ikisi birden `ERR030`). Hata olursa iptal olmaz.
+  - `cancellationReasonId`: aktif olmalı (`ERR050`) ve kategorisi iptal edene uymalı (`ERR052`): müşteri + `PENDING` → `CUSTOMER_TERMINATION`, müşteri + `ACCEPTED` → `CUSTOMER_CANCELLATION`, diğerleri → `OPERATOR_CANCELLATION` (`schemas/transfer.py` `cancellation_category`).
+  - `cancellationReasonText` ("Diğer"): trim, 3–200 karakter (`ERR030`), yazıldığı dilde saklanır.
+  - Çıktı: `Transfer.cancellationReason` (`Reason`, açıklama kullanıcının dilinde), `cancellationReasonId`, `cancellationReasonText`. Sebep metni düzenlenirse eski iptallerde de değişir (anlam değişecekse yeni sebep eklenmeli).
+- `TransferFilter`: `cancellationReasonId`, `cancellationReasonCode: [String!]` (kodlardan biri), `hasCancellationReasonText`.
+- Başlangıç verisi `core/fixtures/reasons.json`: 75 kayıt, 6 kategori, en/tr/de/ru, kategori içi `order`, kodlar kategori önekiyle (`withdraw_`, `cancel_`, `operator_`, `driver_`, `driver_reject_`, `vehicle_reject_`). `manage.py loaddata reasons`; pk'lar 1–75, aynı pk'lı kayıtların üstüne yazar.
+- `transfer`/`transfers` sorguları ve `cancelTransfer` sonucu kullanıcının dilini aktif eder (`cancellationReason.description`, `vehicleCategory.name`). `notify_users` alıcıların dilini aktif ettiği için mutation'larda `activate(user.language)` bildirimden **sonra** çağrılmalı.
+
 ### 4.4 Mesajlaşma (`schemas/message.py`)
 - Mesajlar `Transfer`'e bağlı. Katılımcılar: `customer`, `operator` (atamayı yapan), transferin bütün iç sürücüleri (`utils.get_driver_ids`, dış sürücülerin hesabı yok) ve **tüm aktif ADMIN/STAFF kullanıcıları** (her transferin mesajlaşmasına dahil). Alıcılar gönderen dışındaki katılımcılar (`utils.get_messaging_receiver_ids`), yani ADMIN/STAFF her mesajın bildirimini ve WebSocket olayını alır.
 - Sadece `ACCEPTED`/`STARTED` iken açık (`ERR019`). Gönderebilen roller: CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF. ADMIN/STAFF hepsini okur. Sonradan eklenen ADMIN/STAFF eski mesajların alıcısı olmaz ama hepsini okuyabilir.
@@ -142,7 +157,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR050**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR055**.
 
 | Aralık | Alan |
 |---|---|
@@ -154,6 +169,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 | ERR031–ERR034, ERR042 | Ödeme (ERR042: iade zaten tamamlandı) |
 | ERR036–ERR038 | State |
 | ERR039–ERR041 | City, district (ERR039: city bulunamadı, ERR040/041: kullanımda) |
+| ERR050–ERR054 | İptal sebebi (ERR050: reason bulunamadı/pasif, ERR051: iptal sebebi zorunlu, ERR052: sebep bu iptale uygun değil, ERR053: kod zaten var, ERR054: sebep kullanımda) |
 
 ## 6. Proje kararları (§15)
 
@@ -162,7 +178,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 | Mesajların bağlanacağı model | `Transfer` (iş modeli) |
 | Reply + dosya/konum eki | ✅ |
 | Özel mesaj, zaman penceresi, bildirim tercihi, UUID misafir, üye hesapları | ❌ |
-| Çok dilli alanlar (modeltranslation) | ✅ `VehicleCategory.name/description`, en + tr |
+| Çok dilli alanlar (modeltranslation) | ✅ `VehicleCategory.name/description`, `Reason.description` (en, tr, de, ru) |
 | Kayıtta rol seçimi | ✅ CUSTOMER / DRIVER |
 | S3 dosya depolama | ✅ `USE_S3=true` ise, değilse `MEDIA_ROOT` |
 | FCM push | ✅ `FIREBASE_CREDENTIALS` doluysa |

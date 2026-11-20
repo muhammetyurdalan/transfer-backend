@@ -74,6 +74,11 @@ query($transferId: ID!) {{ vehicleOptions(transferId: $transferId) {{ {OPTION_FI
 '''
 TRANSFER = f'query($id: ID!) {{ transfer(id: $id) {{ {TRANSFER_FIELDS} }} }}'
 TRANSFERS = '{ transfers { count transfers { id } } }'
+TRANSFERS_FILTERED = '''
+query($filters: TransferFilter) {
+  transfers(filters: $filters) { count transfers { id } }
+}
+'''
 PAY_TRANSFER = '''
 mutation($data: PayTransfer!) {
   payTransfer(data: $data) { paymentLink linkExpireTime }
@@ -114,7 +119,33 @@ mutation($data: UpdateTransferStatus!) {{
 }}
 '''
 CANCEL_TRANSFER = f'''
-mutation($id: ID!) {{ cancelTransfer(id: $id) {{ {TRANSFER_FIELDS} }} }}
+mutation($id: ID!) {{ cancelTransfer(data: {{id: $id, cancellationReasonText: "Plans changed"}}) {{ {TRANSFER_FIELDS} }} }}
+'''
+CANCEL_WITH_REASON = '''
+mutation($data: CancelTransfer!) {
+  cancelTransfer(data: $data) {
+    status cancellationReasonText cancellationReason { code description }
+  }
+}
+'''
+REASON_FIELDS = (
+    'id code category description descriptionEn descriptionTr order isActive'
+)
+REASONS = f'''
+query($category: ReasonCategory, $code: String, $isActive: Boolean, $language: Language) {{
+  reasons(category: $category, code: $code, isActive: $isActive, language: $language) {{
+    {REASON_FIELDS}
+  }}
+}}
+'''
+CREATE_REASON = f'''
+mutation($data: CreateReason!) {{ createReason(data: $data) {{ {REASON_FIELDS} }} }}
+'''
+UPDATE_REASON = f'''
+mutation($data: UpdateReason!) {{ updateReason(data: $data) {{ {REASON_FIELDS} }} }}
+'''
+DELETE_REASON = '''
+mutation($id: ID!) { deleteReason(id: $id) { success } }
 '''
 DELETE_TRANSFER = '''
 mutation($id: ID!) { deleteTransfer(id: $id) { success } }
@@ -775,6 +806,94 @@ class VehicleCategoryTests(GraphQLTestCase):
             CREATE_VEHICLE_CATEGORY, {'data': data}, self.staff
         )
         self.assertEqual(self.error_code(result), 'ERR030')
+
+
+class ReasonTests(GraphQLTestCase):
+    async def create_reason(self, user=None, **data):
+        data = {
+            'code': 'cancel_plans_changed',
+            'category': 'CUSTOMER_CANCELLATION',
+            'descriptionEn': 'Plans changed',
+            **data
+        }
+        return await self.execute(
+            CREATE_REASON, {'data': data}, user or self.staff
+        )
+
+    async def test_crud(self):
+        result = await self.create_reason(descriptionTr='Planlar değişti')
+        reason = self.ok(result, 'createReason')
+        self.assertEqual(reason['description'], 'Plans changed')
+        self.assertEqual(reason['code'], 'cancel_plans_changed')
+        self.assertTrue(reason['isActive'])
+        data = {
+            'id': reason['id'], 'order': 2, 'descriptionEn': 'Changed',
+            'code': 'cancel_changed', 'isActive': False
+        }
+        result = await self.execute(UPDATE_REASON, {'data': data}, self.admin)
+        updated = self.ok(result, 'updateReason')
+        self.assertEqual(
+            (updated['order'], updated['code'], updated['isActive']),
+            (2, 'cancel_changed', False)
+        )
+        result = await self.execute(DELETE_REASON, {'id': reason['id']}, self.admin)
+        self.assertTrue(self.ok(result, 'deleteReason')['success'])
+        result = await self.execute(UPDATE_REASON, {'data': data}, self.admin)
+        self.assertEqual(self.error_code(result), 'ERR050')
+
+    async def test_only_admin_and_staff_manage(self):
+        result = await self.create_reason(self.operator)
+        self.assertEqual(self.error_code(result), 'ERR001')
+
+    async def test_invalid_description(self):
+        result = await self.create_reason(descriptionEn=' ')
+        self.assertEqual(self.error_code(result), 'ERR030')
+        result = await self.create_reason(descriptionTr='x' * 201)
+        self.assertEqual(self.error_code(result), 'ERR030')
+
+    async def test_code_format_and_unique(self):
+        for code in ['Bad Code', 'trailing_', 'x' * 51, '']:
+            result = await self.create_reason(code=code)
+            self.assertEqual(self.error_code(result), 'ERR030', code)
+        self.ok(await self.create_reason(), 'createReason')
+        result = await self.create_reason()
+        self.assertEqual(self.error_code(result), 'ERR053')
+        other = self.ok(
+            await self.create_reason(code='cancel_other'), 'createReason'
+        )
+        data = {'id': other['id'], 'code': 'cancel_plans_changed'}
+        result = await self.execute(UPDATE_REASON, {'data': data}, self.admin)
+        self.assertEqual(self.error_code(result), 'ERR053')
+
+    async def test_list_by_category_and_language(self):
+        await self.create_reason(descriptionTr='Planlar değişti')
+        await self.create_reason(
+            code='operator_no_driver', category='OPERATOR_CANCELLATION',
+            descriptionEn='No driver'
+        )
+        variables = {'category': 'CUSTOMER_CANCELLATION', 'language': 'TR'}
+        result = await self.execute(REASONS, variables, self.customer)
+        reasons = self.ok(result, 'reasons')
+        self.assertEqual(
+            [reason['description'] for reason in reasons], ['Planlar değişti']
+        )
+        # Missing language falls back to en
+        variables = {'category': 'OPERATOR_CANCELLATION', 'language': 'DE'}
+        result = await self.execute(REASONS, variables, self.customer)
+        self.assertEqual(self.ok(result, 'reasons')[0]['description'], 'No driver')
+        result = await self.execute(REASONS, {'code': 'operator_no_driver'}, self.customer)
+        self.assertEqual(len(self.ok(result, 'reasons')), 1)
+        result = await self.execute(REASONS)
+        self.assertEqual(self.error_code(result), 'ERR001')
+
+    async def test_inactive_only_for_staff(self):
+        reason = self.ok(await self.create_reason(isActive=False), 'createReason')
+        result = await self.execute(REASONS, {}, self.customer)
+        self.assertEqual(self.ok(result, 'reasons'), [])
+        result = await self.execute(REASONS, {}, self.staff)
+        self.assertEqual(self.ok(result, 'reasons')[0]['id'], reason['id'])
+        result = await self.execute(REASONS, {'isActive': True}, self.staff)
+        self.assertEqual(self.ok(result, 'reasons'), [])
 
 
 class DriverPriceTests(GraphQLTestCase):
@@ -1928,6 +2047,94 @@ class PaymentTests(GraphQLTestCase):
         await self.execute(CANCEL_TRANSFER, {'id': str(transfer.id)}, self.operator)
         refund = await models.Transaction.objects.aget(category='REFUND')
         self.assertEqual(refund.order_amount, Decimal('605.00'))
+
+    async def reason(self, category, code=None, **kwargs):
+        return await models.Reason.objects.acreate(
+            code=code or category.lower(), category=category,
+            description_en=f'{category} en', description_tr=f'{category} tr',
+            **kwargs
+        )
+
+    async def cancel(self, transfer, user, **data):
+        data = {'id': str(transfer.id), **data}
+        return await self.execute(CANCEL_WITH_REASON, {'data': data}, user)
+
+    async def test_cancel_with_reason(self):
+        reason = await self.reason('OPERATOR_CANCELLATION')
+        transfer = await self.paid_transfer()
+        await User.objects.filter(pk=self.operator.id).aupdate(language='tr')
+        self.operator.language = 'tr'
+        result = await self.cancel(
+            transfer, self.operator, cancellationReasonId=str(reason.id)
+        )
+        cancelled = self.ok(result, 'cancelTransfer')
+        self.assertEqual(cancelled['status'], 'CANCELLED')
+        self.assertEqual(cancelled['cancellationReason'], {
+            'code': 'operator_cancellation',
+            'description': 'OPERATOR_CANCELLATION tr'
+        })
+        self.assertEqual(cancelled['cancellationReasonText'], '')
+        # A used reason can't be deleted, only deactivated
+        result = await self.execute(DELETE_REASON, {'id': str(reason.id)}, self.admin)
+        self.assertEqual(self.error_code(result), 'ERR054')
+        filters = {'cancellationReasonCode': ['operator_cancellation']}
+        result = await self.execute(
+            TRANSFERS_FILTERED, {'filters': filters}, self.admin
+        )
+        self.assertEqual(self.ok(result, 'transfers')['count'], 1)
+
+    async def test_customer_reason_category_by_status(self):
+        termination = await self.reason('CUSTOMER_TERMINATION')
+        cancellation = await self.reason('CUSTOMER_CANCELLATION')
+        created = await self.create_transfer()
+        pending = await models.Transfer.objects.aget(pk=created['transfer']['id'])
+        result = await self.cancel(
+            pending, self.customer, cancellationReasonId=str(cancellation.id)
+        )
+        self.assertEqual(self.error_code(result), 'ERR052')
+        result = await self.cancel(
+            pending, self.customer, cancellationReasonId=str(termination.id)
+        )
+        self.assertEqual(self.ok(result, 'cancelTransfer')['status'], 'WITHDRAWN')
+        paid = await self.paid_transfer()
+        result = await self.cancel(
+            paid, self.customer, cancellationReasonId=str(termination.id)
+        )
+        self.assertEqual(self.error_code(result), 'ERR052')
+        result = await self.cancel(
+            paid, self.customer, cancellationReasonId=str(cancellation.id)
+        )
+        self.assertEqual(self.ok(result, 'cancelTransfer')['status'], 'CANCELLED')
+
+    async def test_cancel_with_text(self):
+        transfer = await self.paid_transfer()
+        result = await self.cancel(
+            transfer, self.operator, cancellationReasonText='  Road closed '
+        )
+        cancelled = self.ok(result, 'cancelTransfer')
+        self.assertEqual(cancelled['cancellationReasonText'], 'Road closed')
+        self.assertIsNone(cancelled['cancellationReason'])
+
+    async def test_invalid_cancel_reason(self):
+        inactive = await self.reason('OPERATOR_CANCELLATION', is_active=False)
+        transfer = await self.paid_transfer()
+        cases = [
+            ({}, 'ERR051'),
+            ({'cancellationReasonText': '  '}, 'ERR051'),
+            ({'cancellationReasonText': 'ab'}, 'ERR030'),
+            ({'cancellationReasonText': 'x' * 201}, 'ERR030'),
+            ({'cancellationReasonId': str(inactive.id)}, 'ERR050'),
+            ({'cancellationReasonId': '999'}, 'ERR050'),
+            ({
+                'cancellationReasonId': str(inactive.id),
+                'cancellationReasonText': 'Road closed'
+            }, 'ERR030'),
+        ]
+        for data, code in cases:
+            result = await self.cancel(transfer, self.operator, **data)
+            self.assertEqual(self.error_code(result), code, data)
+        await transfer.arefresh_from_db()
+        self.assertEqual(transfer.status, 'ACCEPTED')
 
     async def test_refund_transaction(self):
         transfer = await self.paid_transfer()

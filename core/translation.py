@@ -5,3 +5,8 @@ from core import models
 @register(models.VehicleCategory)
 class VehicleCategoryTranslationOptions(TranslationOptions):
     fields = ('name', 'description')
+
+
+@register(models.Reason)
+class ReasonTranslationOptions(TranslationOptions):
+    fields = ('description', )

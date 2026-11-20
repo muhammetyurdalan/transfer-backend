@@ -1,0 +1,1202 @@
+[
+  {
+    "model": "core.reason",
+    "pk": 1,
+    "fields": {
+      "code": "withdraw_not_needed",
+      "category": "CUSTOMER_TERMINATION",
+      "description": "No longer need the transfer",
+      "description_en": "No longer need the transfer",
+      "description_tr": "Transfere artık ihtiyacım yok",
+      "description_de": "Ich benötige den Transfer nicht mehr",
+      "description_ru": "Трансфер больше не нужен",
+      "order": 1,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 2,
+    "fields": {
+      "code": "withdraw_wrong_datetime",
+      "category": "CUSTOMER_TERMINATION",
+      "description": "Transfer was created for the wrong date/time",
+      "description_en": "Transfer was created for the wrong date/time",
+      "description_tr": "Transferi yanlış tarih/saat için oluşturdum",
+      "description_de": "Transfer wurde für das falsche Datum / die falsche Uhrzeit erstellt",
+      "description_ru": "Трансфер создан на неверную дату/время",
+      "order": 2,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 3,
+    "fields": {
+      "code": "withdraw_better_alternative",
+      "category": "CUSTOMER_TERMINATION",
+      "description": "Found a more suitable alternative",
+      "description_en": "Found a more suitable alternative",
+      "description_tr": "Daha uygun bir alternatif buldum",
+      "description_de": "Ich habe eine passendere Alternative gefunden",
+      "description_ru": "Нашёл более подходящий вариант",
+      "order": 3,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 4,
+    "fields": {
+      "code": "withdraw_plans_changed",
+      "category": "CUSTOMER_TERMINATION",
+      "description": "Change of plans",
+      "description_en": "Change of plans",
+      "description_tr": "Plan değişikliği",
+      "description_de": "Planänderung",
+      "description_ru": "Изменились планы",
+      "order": 4,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 5,
+    "fields": {
+      "code": "withdraw_wrong_location",
+      "category": "CUSTOMER_TERMINATION",
+      "description": "Incorrect location entered",
+      "description_en": "Incorrect location entered",
+      "description_tr": "Yanlış lokasyon girdim",
+      "description_de": "Falscher Ort eingegeben",
+      "description_ru": "Указано неверное место",
+      "order": 5,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 6,
+    "fields": {
+      "code": "withdraw_created_by_mistake",
+      "category": "CUSTOMER_TERMINATION",
+      "description": "Reservation was created by mistake",
+      "description_en": "Reservation was created by mistake",
+      "description_tr": "Rezervasyonu yanlışlıkla oluşturdum",
+      "description_de": "Buchung wurde versehentlich erstellt",
+      "description_ru": "Бронирование создано по ошибке",
+      "order": 6,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 7,
+    "fields": {
+      "code": "withdraw_app_issue",
+      "category": "CUSTOMER_TERMINATION",
+      "description": "Technical issue in the application",
+      "description_en": "Technical issue in the application",
+      "description_tr": "Uygulamada sorun yaşadım",
+      "description_de": "Technisches Problem in der Anwendung",
+      "description_ru": "Техническая проблема в приложении",
+      "order": 7,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 8,
+    "fields": {
+      "code": "withdraw_health_emergency",
+      "category": "CUSTOMER_TERMINATION",
+      "description": "Health / emergency reasons",
+      "description_en": "Health / emergency reasons",
+      "description_tr": "Sağlık / acil durum",
+      "description_de": "Gesundheitliche Gründe / Notfall",
+      "description_ru": "Здоровье / экстренная ситуация",
+      "order": 8,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 9,
+    "fields": {
+      "code": "withdraw_weather",
+      "category": "CUSTOMER_TERMINATION",
+      "description": "Weather conditions",
+      "description_en": "Weather conditions",
+      "description_tr": "Hava koşulları",
+      "description_de": "Wetterbedingungen",
+      "description_ru": "Погодные условия",
+      "order": 9,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 10,
+    "fields": {
+      "code": "cancel_price_too_high",
+      "category": "CUSTOMER_CANCELLATION",
+      "description": "Price is too high",
+      "description_en": "Price is too high",
+      "description_tr": "Fiyat yüksek geldi",
+      "description_de": "Der Preis ist zu hoch",
+      "description_ru": "Слишком высокая цена",
+      "order": 1,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 11,
+    "fields": {
+      "code": "cancel_details_changed",
+      "category": "CUSTOMER_CANCELLATION",
+      "description": "Transfer details have changed",
+      "description_en": "Transfer details have changed",
+      "description_tr": "Transfer detayları değişti",
+      "description_de": "Die Transferdetails haben sich geändert",
+      "description_ru": "Изменились детали трансфера",
+      "order": 2,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 12,
+    "fields": {
+      "code": "cancel_vehicle_type_mismatch",
+      "category": "CUSTOMER_CANCELLATION",
+      "description": "Vehicle type does not meet expectations",
+      "description_en": "Vehicle type does not meet expectations",
+      "description_tr": "Araç tipi beklentime uymuyor",
+      "description_de": "Der Fahrzeugtyp entspricht nicht meinen Erwartungen",
+      "description_ru": "Тип автомобиля не соответствует ожиданиям",
+      "order": 3,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 13,
+    "fields": {
+      "code": "cancel_luggage_capacity",
+      "category": "CUSTOMER_CANCELLATION",
+      "description": "Insufficient luggage capacity",
+      "description_en": "Insufficient luggage capacity",
+      "description_tr": "Bagaj kapasitesi yetersiz",
+      "description_de": "Unzureichende Gepäckkapazität",
+      "description_ru": "Недостаточно места для багажа",
+      "order": 4,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 14,
+    "fields": {
+      "code": "cancel_extra_requests_unmet",
+      "category": "CUSTOMER_CANCELLATION",
+      "description": "Additional requests not fulfilled (e.g. baby seat)",
+      "description_en": "Additional requests not fulfilled (e.g. baby seat)",
+      "description_tr": "Ek isteklerim karşılanmadı (bebek koltuğu vb.)",
+      "description_de": "Zusätzliche Wünsche nicht erfüllt (z. B. Kindersitz)",
+      "description_ru": "Дополнительные пожелания не выполнены (например, детское кресло)",
+      "order": 5,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 15,
+    "fields": {
+      "code": "cancel_operator_unreachable",
+      "category": "CUSTOMER_CANCELLATION",
+      "description": "Unable to contact the operator",
+      "description_en": "Unable to contact the operator",
+      "description_tr": "Operatörle iletişim kuramadım",
+      "description_de": "Der Operator ist nicht erreichbar",
+      "description_ru": "Не удалось связаться с оператором",
+      "order": 6,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 16,
+    "fields": {
+      "code": "cancel_driver_not_assigned",
+      "category": "CUSTOMER_CANCELLATION",
+      "description": "Driver not yet assigned",
+      "description_en": "Driver not yet assigned",
+      "description_tr": "Sürücü henüz atanmadı",
+      "description_de": "Noch kein Fahrer zugewiesen",
+      "description_ru": "Водитель ещё не назначен",
+      "order": 7,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 17,
+    "fields": {
+      "code": "cancel_health_emergency",
+      "category": "CUSTOMER_CANCELLATION",
+      "description": "Health / emergency reasons",
+      "description_en": "Health / emergency reasons",
+      "description_tr": "Sağlık / acil durum",
+      "description_de": "Gesundheitliche Gründe / Notfall",
+      "description_ru": "Здоровье / экстренная ситуация",
+      "order": 8,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 18,
+    "fields": {
+      "code": "cancel_not_needed",
+      "category": "CUSTOMER_CANCELLATION",
+      "description": "No longer need the transfer",
+      "description_en": "No longer need the transfer",
+      "description_tr": "Transfere artık ihtiyacım yok",
+      "description_de": "Ich benötige den Transfer nicht mehr",
+      "description_ru": "Трансфер больше не нужен",
+      "order": 9,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 19,
+    "fields": {
+      "code": "cancel_better_alternative",
+      "category": "CUSTOMER_CANCELLATION",
+      "description": "Found a more suitable alternative",
+      "description_en": "Found a more suitable alternative",
+      "description_tr": "Daha uygun bir alternatif buldum",
+      "description_de": "Ich habe eine passendere Alternative gefunden",
+      "description_ru": "Нашёл более подходящий вариант",
+      "order": 10,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 20,
+    "fields": {
+      "code": "operator_no_driver",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "No available driver",
+      "description_en": "No available driver",
+      "description_tr": "Uygun sürücü bulunamadı",
+      "description_de": "Kein verfügbarer Fahrer",
+      "description_ru": "Нет свободного водителя",
+      "order": 1,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 21,
+    "fields": {
+      "code": "operator_no_vehicle",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "No suitable vehicle available",
+      "description_en": "No suitable vehicle available",
+      "description_tr": "Uygun araç bulunamadı",
+      "description_de": "Kein passendes Fahrzeug verfügbar",
+      "description_ru": "Нет подходящего автомобиля",
+      "order": 2,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 22,
+    "fields": {
+      "code": "operator_customer_request",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "Customer requested cancellation",
+      "description_en": "Customer requested cancellation",
+      "description_tr": "Müşteri iptal talep etti",
+      "description_de": "Der Kunde hat die Stornierung angefragt",
+      "description_ru": "Клиент запросил отмену",
+      "order": 3,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 23,
+    "fields": {
+      "code": "operator_customer_unreachable",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "Unable to reach the customer",
+      "description_en": "Unable to reach the customer",
+      "description_tr": "Müşteriye ulaşılamıyor",
+      "description_de": "Der Kunde ist nicht erreichbar",
+      "description_ru": "Не удаётся связаться с клиентом",
+      "order": 4,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 24,
+    "fields": {
+      "code": "operator_customer_info_invalid",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "Incomplete / incorrect customer information",
+      "description_en": "Incomplete / incorrect customer information",
+      "description_tr": "Müşteri bilgileri eksik / hatalı",
+      "description_de": "Unvollständige / falsche Kundenangaben",
+      "description_ru": "Неполные / неверные данные клиента",
+      "order": 5,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 25,
+    "fields": {
+      "code": "operator_time_changed",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "Transfer time changed (e.g. flight delay)",
+      "description_en": "Transfer time changed (e.g. flight delay)",
+      "description_tr": "Transfer saati değişti (uçuş gecikmesi vb.)",
+      "description_de": "Transferzeit hat sich geändert (z. B. Flugverspätung)",
+      "description_ru": "Изменилось время трансфера (например, задержка рейса)",
+      "order": 6,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 26,
+    "fields": {
+      "code": "operator_over_capacity",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "Number of passengers exceeds vehicle capacity",
+      "description_en": "Number of passengers exceeds vehicle capacity",
+      "description_tr": "Yolcu sayısı kapasiteyi aşıyor",
+      "description_de": "Die Anzahl der Fahrgäste übersteigt die Fahrzeugkapazität",
+      "description_ru": "Количество пассажиров превышает вместимость автомобиля",
+      "order": 7,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 27,
+    "fields": {
+      "code": "operator_wrong_price",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "Incorrect pricing",
+      "description_en": "Incorrect pricing",
+      "description_tr": "Fiyat hatalı oluşturulmuş",
+      "description_de": "Fehlerhafte Preisberechnung",
+      "description_ru": "Неверно рассчитана цена",
+      "order": 8,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 28,
+    "fields": {
+      "code": "operator_duplicate",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "Duplicate reservation",
+      "description_en": "Duplicate reservation",
+      "description_tr": "Mükerrer rezervasyon",
+      "description_de": "Doppelte Buchung",
+      "description_ru": "Повторное бронирование",
+      "order": 9,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 29,
+    "fields": {
+      "code": "operator_suspicious",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "Suspicious reservation",
+      "description_en": "Suspicious reservation",
+      "description_tr": "Şüpheli rezervasyon",
+      "description_de": "Verdächtige Buchung",
+      "description_ru": "Подозрительное бронирование",
+      "order": 10,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 30,
+    "fields": {
+      "code": "operator_safety",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "Service cannot be provided for safety reasons",
+      "description_en": "Service cannot be provided for safety reasons",
+      "description_tr": "Güvenlik nedeniyle hizmet verilemiyor",
+      "description_de": "Der Service kann aus Sicherheitsgründen nicht erbracht werden",
+      "description_ru": "Услуга не может быть оказана по соображениям безопасности",
+      "order": 11,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 31,
+    "fields": {
+      "code": "operator_traffic",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "Not feasible due to traffic / road conditions",
+      "description_en": "Not feasible due to traffic / road conditions",
+      "description_tr": "Trafik / yol durumu nedeniyle mümkün değil",
+      "description_de": "Aufgrund von Verkehrs- / Straßenverhältnissen nicht möglich",
+      "description_ru": "Невозможно из-за дорожной обстановки",
+      "order": 12,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 32,
+    "fields": {
+      "code": "operator_weather",
+      "category": "OPERATOR_CANCELLATION",
+      "description": "Weather conditions",
+      "description_en": "Weather conditions",
+      "description_tr": "Hava koşulları",
+      "description_de": "Wetterbedingungen",
+      "description_ru": "Погодные условия",
+      "order": 13,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 33,
+    "fields": {
+      "code": "driver_vehicle_breakdown",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Vehicle breakdown",
+      "description_en": "Vehicle breakdown",
+      "description_tr": "Araç arızası",
+      "description_de": "Fahrzeugpanne",
+      "description_ru": "Поломка автомобиля",
+      "order": 1,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 34,
+    "fields": {
+      "code": "driver_driver_unavailable",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Driver unavailable",
+      "description_en": "Driver unavailable",
+      "description_tr": "Şoför müsait değil",
+      "description_de": "Fahrer nicht verfügbar",
+      "description_ru": "Водитель недоступен",
+      "order": 2,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 35,
+    "fields": {
+      "code": "driver_vehicle_unavailable",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Vehicle unavailable",
+      "description_en": "Vehicle unavailable",
+      "description_tr": "Araç müsait değil",
+      "description_de": "Fahrzeug nicht verfügbar",
+      "description_ru": "Автомобиль недоступен",
+      "order": 3,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 36,
+    "fields": {
+      "code": "driver_time_changed",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Transfer time changed (e.g. flight delay)",
+      "description_en": "Transfer time changed (e.g. flight delay)",
+      "description_tr": "Transfer saati değişti (uçuş gecikmesi vb.)",
+      "description_de": "Transferzeit hat sich geändert (z. B. Flugverspätung)",
+      "description_ru": "Изменилось время трансфера (например, задержка рейса)",
+      "order": 4,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 37,
+    "fields": {
+      "code": "driver_customer_unreachable",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Unable to reach the customer",
+      "description_en": "Unable to reach the customer",
+      "description_tr": "Müşteri iletişime geçmiyor",
+      "description_de": "Der Kunde ist nicht erreichbar",
+      "description_ru": "Не удаётся связаться с клиентом",
+      "order": 5,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 38,
+    "fields": {
+      "code": "driver_customer_no_show",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Customer did not show up",
+      "description_en": "Customer did not show up",
+      "description_tr": "Müşteri gelmedi",
+      "description_de": "Der Kunde ist nicht erschienen",
+      "description_ru": "Клиент не пришёл",
+      "order": 6,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 39,
+    "fields": {
+      "code": "driver_customer_info_invalid",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Incomplete / incorrect customer information",
+      "description_en": "Incomplete / incorrect customer information",
+      "description_tr": "Müşteri bilgileri eksik / hatalı",
+      "description_de": "Unvollständige / falsche Kundenangaben",
+      "description_ru": "Неполные / неверные данные клиента",
+      "order": 7,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 40,
+    "fields": {
+      "code": "driver_special_requests_unmet",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Customer special requests cannot be met",
+      "description_en": "Customer special requests cannot be met",
+      "description_tr": "Müşteri özel istekleri karşılanamıyor",
+      "description_de": "Sonderwünsche des Kunden können nicht erfüllt werden",
+      "description_ru": "Особые пожелания клиента невозможно выполнить",
+      "order": 8,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 41,
+    "fields": {
+      "code": "driver_traffic",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Not feasible due to traffic / road conditions",
+      "description_en": "Not feasible due to traffic / road conditions",
+      "description_tr": "Trafik / yol durumu nedeniyle mümkün değil",
+      "description_de": "Aufgrund von Verkehrs- / Straßenverhältnissen nicht möglich",
+      "description_ru": "Невозможно из-за дорожной обстановки",
+      "order": 9,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 42,
+    "fields": {
+      "code": "driver_wrong_price",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Incorrect pricing",
+      "description_en": "Incorrect pricing",
+      "description_tr": "Fiyat hatalı oluşturulmuş",
+      "description_de": "Fehlerhafte Preisberechnung",
+      "description_ru": "Неверно рассчитана цена",
+      "order": 10,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 43,
+    "fields": {
+      "code": "driver_over_capacity",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Number of passengers exceeds vehicle capacity",
+      "description_en": "Number of passengers exceeds vehicle capacity",
+      "description_tr": "Yolcu sayısı kapasiteyi aşıyor",
+      "description_de": "Die Anzahl der Fahrgäste übersteigt die Fahrzeugkapazität",
+      "description_ru": "Количество пассажиров превышает вместимость автомобиля",
+      "order": 11,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 44,
+    "fields": {
+      "code": "driver_safety",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Service cannot be provided for safety reasons",
+      "description_en": "Service cannot be provided for safety reasons",
+      "description_tr": "Güvenlik nedeniyle hizmet verilemiyor",
+      "description_de": "Der Service kann aus Sicherheitsgründen nicht erbracht werden",
+      "description_ru": "Услуга не может быть оказана по соображениям безопасности",
+      "order": 12,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 45,
+    "fields": {
+      "code": "driver_schedule_conflict",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Scheduling conflict",
+      "description_en": "Scheduling conflict",
+      "description_tr": "Zamanlama çakışması",
+      "description_de": "Terminkonflikt",
+      "description_ru": "Конфликт расписания",
+      "order": 13,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 46,
+    "fields": {
+      "code": "driver_weather",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Weather conditions",
+      "description_en": "Weather conditions",
+      "description_tr": "Hava koşulları",
+      "description_de": "Wetterbedingungen",
+      "description_ru": "Погодные условия",
+      "order": 14,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 47,
+    "fields": {
+      "code": "driver_health_emergency",
+      "category": "DRIVER_CANCELLATION",
+      "description": "Health / emergency reasons",
+      "description_en": "Health / emergency reasons",
+      "description_tr": "Sağlık / acil durum",
+      "description_de": "Gesundheitliche Gründe / Notfall",
+      "description_ru": "Здоровье / экстренная ситуация",
+      "order": 15,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 48,
+    "fields": {
+      "code": "driver_reject_data_missing",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "Required data is missing",
+      "description_en": "Required data is missing",
+      "description_tr": "Gerekli veri eksik",
+      "description_de": "Erforderliche Daten fehlen",
+      "description_ru": "Отсутствуют обязательные данные",
+      "order": 1,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 49,
+    "fields": {
+      "code": "driver_reject_data_invalid",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "The provided data is invalid",
+      "description_en": "The provided data is invalid",
+      "description_tr": "Sağlanan veri geçersiz",
+      "description_de": "Die angegebenen Daten sind ungültig",
+      "description_ru": "Предоставленные данные недействительны",
+      "order": 2,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 50,
+    "fields": {
+      "code": "driver_reject_data_incomplete",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "The data is incomplete",
+      "description_en": "The data is incomplete",
+      "description_tr": "Veri eksik doldurulmuş",
+      "description_de": "Die Daten sind unvollständig",
+      "description_ru": "Данные заполнены не полностью",
+      "order": 3,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 51,
+    "fields": {
+      "code": "driver_reject_data_outdated",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "The data is outdated",
+      "description_en": "The data is outdated",
+      "description_tr": "Veri güncel değil",
+      "description_de": "Die Daten sind veraltet",
+      "description_ru": "Данные устарели",
+      "order": 4,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 52,
+    "fields": {
+      "code": "driver_reject_image_quality",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "The image quality is insufficient",
+      "description_en": "The image quality is insufficient",
+      "description_tr": "Görsel kalitesi yetersiz",
+      "description_de": "Die Bildqualität ist unzureichend",
+      "description_ru": "Недостаточное качество изображения",
+      "order": 5,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 53,
+    "fields": {
+      "code": "driver_reject_document_wrong_content",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "Wrong document content provided",
+      "description_en": "Wrong document content provided",
+      "description_tr": "Yanlış doküman içeriği",
+      "description_de": "Falscher Dokumentinhalt",
+      "description_ru": "Неверное содержание документа",
+      "order": 6,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 54,
+    "fields": {
+      "code": "driver_reject_document_unreadable",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "The document is not readable",
+      "description_en": "The document is not readable",
+      "description_tr": "Doküman okunaklı değil",
+      "description_de": "Das Dokument ist nicht lesbar",
+      "description_ru": "Документ нечитаем",
+      "order": 7,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 55,
+    "fields": {
+      "code": "driver_reject_document_incomplete",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "The document is incomplete",
+      "description_en": "The document is incomplete",
+      "description_tr": "Doküman eksik",
+      "description_de": "Das Dokument ist unvollständig",
+      "description_ru": "Документ неполный",
+      "order": 8,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 56,
+    "fields": {
+      "code": "driver_reject_document_expired",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "The document has expired",
+      "description_en": "The document has expired",
+      "description_tr": "Dokümanın süresi dolmuş",
+      "description_de": "Das Dokument ist abgelaufen",
+      "description_ru": "Срок действия документа истёк",
+      "order": 9,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 57,
+    "fields": {
+      "code": "driver_reject_document_wrong_type",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "Document is of an incorrect type",
+      "description_en": "Document is of an incorrect type",
+      "description_tr": "Doküman türü hatalı",
+      "description_de": "Falscher Dokumenttyp",
+      "description_ru": "Неверный тип документа",
+      "order": 10,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 58,
+    "fields": {
+      "code": "driver_reject_date_invalid",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "The date information is invalid",
+      "description_en": "The date information is invalid",
+      "description_tr": "Tarih bilgisi geçersiz",
+      "description_de": "Die Datumsangabe ist ungültig",
+      "description_ru": "Неверная дата",
+      "order": 11,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 59,
+    "fields": {
+      "code": "driver_reject_number_out_of_range",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "The numeric value is not within the acceptable range",
+      "description_en": "The numeric value is not within the acceptable range",
+      "description_tr": "Sayısal değer kabul edilen aralıkta değil",
+      "description_de": "Der Zahlenwert liegt außerhalb des zulässigen Bereichs",
+      "description_ru": "Числовое значение вне допустимого диапазона",
+      "order": 12,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 60,
+    "fields": {
+      "code": "driver_reject_length_invalid",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "The value is not within the acceptable length",
+      "description_en": "The value is not within the acceptable length",
+      "description_tr": "Değer kabul edilen uzunlukta değil",
+      "description_de": "Der Wert hat nicht die zulässige Länge",
+      "description_ru": "Значение недопустимой длины",
+      "order": 13,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 61,
+    "fields": {
+      "code": "driver_reject_address_unverified",
+      "category": "DRIVER_DISAPPROVAL",
+      "description": "The address information cannot be verified",
+      "description_en": "The address information cannot be verified",
+      "description_tr": "Adres bilgisi doğrulanamıyor",
+      "description_de": "Die Adressangaben können nicht überprüft werden",
+      "description_ru": "Не удаётся проверить адрес",
+      "order": 14,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 62,
+    "fields": {
+      "code": "vehicle_reject_data_missing",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "Required data is missing",
+      "description_en": "Required data is missing",
+      "description_tr": "Gerekli veri eksik",
+      "description_de": "Erforderliche Daten fehlen",
+      "description_ru": "Отсутствуют обязательные данные",
+      "order": 1,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 63,
+    "fields": {
+      "code": "vehicle_reject_data_invalid",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "The provided data is invalid",
+      "description_en": "The provided data is invalid",
+      "description_tr": "Sağlanan veri geçersiz",
+      "description_de": "Die angegebenen Daten sind ungültig",
+      "description_ru": "Предоставленные данные недействительны",
+      "order": 2,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 64,
+    "fields": {
+      "code": "vehicle_reject_data_incomplete",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "The data is incomplete",
+      "description_en": "The data is incomplete",
+      "description_tr": "Veri eksik doldurulmuş",
+      "description_de": "Die Daten sind unvollständig",
+      "description_ru": "Данные заполнены не полностью",
+      "order": 3,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 65,
+    "fields": {
+      "code": "vehicle_reject_data_outdated",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "The data is outdated",
+      "description_en": "The data is outdated",
+      "description_tr": "Veri güncel değil",
+      "description_de": "Die Daten sind veraltet",
+      "description_ru": "Данные устарели",
+      "order": 4,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 66,
+    "fields": {
+      "code": "vehicle_reject_image_quality",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "The image quality is insufficient",
+      "description_en": "The image quality is insufficient",
+      "description_tr": "Görsel kalitesi yetersiz",
+      "description_de": "Die Bildqualität ist unzureichend",
+      "description_ru": "Недостаточное качество изображения",
+      "order": 5,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 67,
+    "fields": {
+      "code": "vehicle_reject_document_wrong_content",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "Wrong document content provided",
+      "description_en": "Wrong document content provided",
+      "description_tr": "Yanlış doküman içeriği",
+      "description_de": "Falscher Dokumentinhalt",
+      "description_ru": "Неверное содержание документа",
+      "order": 6,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 68,
+    "fields": {
+      "code": "vehicle_reject_document_unreadable",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "The document is not readable",
+      "description_en": "The document is not readable",
+      "description_tr": "Doküman okunaklı değil",
+      "description_de": "Das Dokument ist nicht lesbar",
+      "description_ru": "Документ нечитаем",
+      "order": 7,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 69,
+    "fields": {
+      "code": "vehicle_reject_document_incomplete",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "The document is incomplete",
+      "description_en": "The document is incomplete",
+      "description_tr": "Doküman eksik",
+      "description_de": "Das Dokument ist unvollständig",
+      "description_ru": "Документ неполный",
+      "order": 8,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 70,
+    "fields": {
+      "code": "vehicle_reject_document_expired",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "The document has expired",
+      "description_en": "The document has expired",
+      "description_tr": "Dokümanın süresi dolmuş",
+      "description_de": "Das Dokument ist abgelaufen",
+      "description_ru": "Срок действия документа истёк",
+      "order": 9,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 71,
+    "fields": {
+      "code": "vehicle_reject_document_wrong_type",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "Document is of an incorrect type",
+      "description_en": "Document is of an incorrect type",
+      "description_tr": "Doküman türü hatalı",
+      "description_de": "Falscher Dokumenttyp",
+      "description_ru": "Неверный тип документа",
+      "order": 10,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 72,
+    "fields": {
+      "code": "vehicle_reject_date_invalid",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "The date information is invalid",
+      "description_en": "The date information is invalid",
+      "description_tr": "Tarih bilgisi geçersiz",
+      "description_de": "Die Datumsangabe ist ungültig",
+      "description_ru": "Неверная дата",
+      "order": 11,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 73,
+    "fields": {
+      "code": "vehicle_reject_number_out_of_range",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "The numeric value is not within the acceptable range",
+      "description_en": "The numeric value is not within the acceptable range",
+      "description_tr": "Sayısal değer kabul edilen aralıkta değil",
+      "description_de": "Der Zahlenwert liegt außerhalb des zulässigen Bereichs",
+      "description_ru": "Числовое значение вне допустимого диапазона",
+      "order": 12,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 74,
+    "fields": {
+      "code": "vehicle_reject_length_invalid",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "The value is not within the acceptable length",
+      "description_en": "The value is not within the acceptable length",
+      "description_tr": "Değer kabul edilen uzunlukta değil",
+      "description_de": "Der Wert hat nicht die zulässige Länge",
+      "description_ru": "Значение недопустимой длины",
+      "order": 13,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  },
+  {
+    "model": "core.reason",
+    "pk": 75,
+    "fields": {
+      "code": "vehicle_reject_address_unverified",
+      "category": "VEHICLE_DISAPPROVAL",
+      "description": "The address information cannot be verified",
+      "description_en": "The address information cannot be verified",
+      "description_tr": "Adres bilgisi doğrulanamıyor",
+      "description_de": "Die Adressangaben können nicht überprüft werden",
+      "description_ru": "Не удаётся проверить адрес",
+      "order": 14,
+      "is_active": true,
+      "created_at": "2026-11-21T00:00:00Z"
+    }
+  }
+]

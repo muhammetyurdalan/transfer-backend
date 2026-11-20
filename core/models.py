@@ -266,6 +266,31 @@ class Vehicle(models.Model):
         return self.plate
 
 
+class Reason(models.Model):
+    """Predefined reason the client lists (e.g. cancellation reasons)."""
+    code = models.CharField(
+        max_length=50, unique=True,
+        help_text='snake_case key for filters, e.g. driver_vehicle_breakdown'
+    )
+    category = models.CharField(
+        max_length=30,
+        choices=enums.ReasonCategory.choices
+    )
+    description = models.CharField(max_length=200)
+    order = models.PositiveSmallIntegerField(default=0)
+    is_active = models.BooleanField(
+        default=True,
+        help_text='Inactive reasons are not listed but stay on transfers'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['category', 'order', 'id']
+
+    def __str__(self):
+        return self.description
+
+
 class Transfer(models.Model):
     customer = models.ForeignKey(
         User,
@@ -339,6 +364,16 @@ class Transfer(models.Model):
         blank=True, null=True
     )
     psp_data = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    cancellation_reason = models.ForeignKey(
+        Reason,
+        related_name='transfers',
+        on_delete=models.PROTECT,
+        blank=True, null=True
+    )
+    cancellation_reason_text = models.CharField(
+        max_length=200, blank=True,
+        help_text='Free text when no predefined reason fits ("Other")'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

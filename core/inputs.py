@@ -408,6 +408,17 @@ class UpdateTransferStatus:
 
 
 @sb.input
+class CancelTransfer:
+    id: sb.ID
+    cancellation_reason_id: Optional[sb.ID] = optional(
+        'active Reason of the allowed category; or cancellationReasonText'
+    )
+    cancellation_reason_text: Optional[str] = optional(
+        '"Other": 3-200 chars, only without cancellationReasonId'
+    )
+
+
+@sb.input
 class TipDriver:
     id: sb.ID
     amount: Decimal = required('8.2, > 0')
@@ -415,6 +426,33 @@ class TipDriver:
         'Transfer.drivers id of an internal driver, '
         'required if the transfer has more than one'
     )
+
+
+# Reason
+
+@sb.input
+class CreateReason:
+    code: str = required('unique snake_case, 50 chars max')
+    category: enums.ReasonCategory
+    description_en: str = required('200 chars max')
+    description_tr: Optional[str] = optional('200 chars max, falls back to en')
+    description_de: Optional[str] = optional('200 chars max, falls back to en')
+    description_ru: Optional[str] = optional('200 chars max, falls back to en')
+    order: Optional[int] = optional('list order, default 0')
+    is_active: Optional[bool] = optional('default true')
+
+
+@sb.input
+class UpdateReason:
+    id: sb.ID
+    code: Optional[str] = optional('unique snake_case, 50 chars max')
+    category: Optional[enums.ReasonCategory] = optional()
+    description_en: Optional[str] = optional('200 chars max')
+    description_tr: Optional[str] = optional('200 chars max')
+    description_de: Optional[str] = optional('200 chars max')
+    description_ru: Optional[str] = optional('200 chars max')
+    order: Optional[int] = optional()
+    is_active: Optional[bool] = optional()
 
 
 # Transaction

@@ -93,6 +93,7 @@ class Query:
         id: sb.ID
     ) -> Optional[outputs.Transfer]:
         user = info.context['user']
+        activate(user.language)
         return await utils.get_transfers(user).filter(pk=id).afirst()
 
     @sbd.field(description='ALL')
@@ -104,6 +105,7 @@ class Query:
         pagination: Optional[OffsetPaginationInput] = sb.UNSET
     ) -> outputs.TransfersPaginated:
         user = info.context['user']
+        activate(user.language)
         transfers = utils.get_transfers(user)
         if filters:
             transfers = sbd.filters.apply(filters, transfers, info)
@@ -366,6 +368,36 @@ def get_payment_response(link, expire_time):
     )
 
 
+def cancellation_category(user, transfer):
+    """Reason category a user may cancel this transfer with."""
+    if user.role == Role.CUSTOMER:
+        if transfer.status == Status.PENDING:
+            return enums.ReasonCategory.CUSTOMER_TERMINATION
+        return enums.ReasonCategory.CUSTOMER_CANCELLATION
+    return enums.ReasonCategory.OPERATOR_CANCELLATION
+
+
+async def set_cancellation_reason(user, transfer, data):
+    """
+    Exactly one of an active Reason (ERR050, wrong category ERR052) or a
+    3-200 chars free text (ERR030). Neither: ERR051.
+    """
+    reason_id = data.cancellation_reason_id or None
+    text = (data.cancellation_reason_text or '').strip()
+    assert reason_id or text, dumps({'code': 'ERR051'})
+    assert not (reason_id and text), dumps({'code': 'ERR030'})
+    if text:
+        assert 3 <= len(text) <= 200, dumps({'code': 'ERR030'})
+        transfer.cancellation_reason_text = text
+        return
+    reasons = models.Reason.objects.filter(is_active=True)
+    reason = await reasons.filter(pk=reason_id).afirst()
+    assert reason, dumps({'code': 'ERR050'})
+    category = cancellation_category(user, transfer)
+    assert reason.category == category, dumps({'code': 'ERR052'})
+    transfer.cancellation_reason = reason
+
+
 @sb.type
 class Mutation:
     @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
@@ -612,15 +644,20 @@ class Mutation:
     @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
     async def cancel_transfer(
         root, info: Info,
-        id: sb.ID
+        data: inputs.CancelTransfer
     ) -> outputs.Transfer:
         """
         Unpaid: the payment link is expired. Paid: the payment is refunded,
         a customer's cancellation keeps the CANCEL_PENALTY_RULES share.
+        A reason is required: an active `reasons` item of the caller's
+        category (customer PENDING: CUSTOMER_TERMINATION, customer ACCEPTED:
+        CUSTOMER_CANCELLATION, others: OPERATOR_CANCELLATION) or a free text.
         """
         user = info.context['user']
         expand = ['state']
-        transfer = await get_transfer(user, id, CANCELLABLE_STATUSES, expand)
+        args = (user, data.id, CANCELLABLE_STATUSES, expand)
+        transfer = await get_transfer(*args)
+        await set_cancellation_reason(user, transfer, data)
         cancel_time = timezone.now()
         if transfer.status == Status.PENDING:
             await psp.expire_payment_link(transfer)
@@ -642,6 +679,8 @@ class Mutation:
         )
         args = (user.id, action, receiver_ids)
         await utils.broadcast(*args, transfer_id=str(transfer.id))
+        # notify_users activates each receiver's language
+        activate(user.language)
         return transfer
 
     @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')

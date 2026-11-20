@@ -234,6 +234,27 @@ class VehicleCategory:
     currency: Optional[enums.Currency]
 
 
+@sbd.type(models.Reason, exclude=['transfers'])
+class Reason:
+    id: sb.ID
+    code: str
+    category: enums.ReasonCategory
+    # Active language (user's language or the language argument)
+    description: Optional[str] = sbd.field(
+        only=[
+            'description', 'description_en', 'description_tr',
+            'description_de', 'description_ru'
+        ]
+    )
+    description_en: Optional[str]
+    description_tr: Optional[str]
+    description_de: Optional[str]
+    description_ru: Optional[str]
+    order: int
+    is_active: bool
+    created_at: sb.auto
+
+
 @sb.type
 class VehicleCategoriesPaginated:
     vehicle_categories: Optional[List[VehicleCategory]]
@@ -380,6 +401,7 @@ class TransferFilter:
     passenger_name: Optional[sbd.StrFilterLookup] = sb.UNSET
     flight_number: Optional[sbd.StrFilterLookup] = sb.UNSET
     created_at: Optional[sbd.DatetimeFilterLookup] = sb.UNSET
+    cancellation_reason_id: Optional[sbd.BaseFilterLookup[sb.ID]] = sb.UNSET
     AND: Optional[List['TransferFilter']]
     OR: Optional[List['TransferFilter']]
     NOT: Optional[List['TransferFilter']]
@@ -404,6 +426,17 @@ class TransferFilter:
             transfer=OuterRef('pk'), vehicle_id=value
         )
         return Q(Exists(drivers))
+
+    @sbd.filter_field
+    def cancellation_reason_code(self, value: List[str], prefix: str) -> Q:
+        """Cancelled with one of these Reason codes."""
+        return Q(**{f'{prefix}cancellation_reason__code__in': value})
+
+    @sbd.filter_field
+    def has_cancellation_reason_text(self, value: bool, prefix: str) -> Q:
+        """Cancelled with a free text ("Other")."""
+        q = Q(**{f'{prefix}cancellation_reason_text': ''})
+        return ~q if value else q
 
 
 @sbd.order_type(models.Transfer)
@@ -485,6 +518,10 @@ class Transfer:
     legs: Optional[List[Leg]]
     status: Optional[enums.TransferStatus]
     currency: Optional[enums.Currency]
+    cancellation_reason_id: Optional[sb.ID]
+    cancellation_reason: Optional[Reason] = sbd.field(
+        description="Predefined reason, description in the user's language"
+    )
 
     @sbd.field(description='Scoped by role, like the transactions query')
     async def transactions(self, info: Info) -> List['Transaction']:
