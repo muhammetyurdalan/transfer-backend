@@ -135,6 +135,12 @@ class CreateState:
     )
     driver_buffer_minutes: Optional[int] = optional('default 30')
     allow_multiple_vehicles: Optional[bool] = optional('default false')
+    allow_unconditional_refund: Optional[bool] = optional(
+        'default false, needs cancelPriceRate > 0'
+    )
+    cancel_price_rate: Optional[Decimal] = optional(
+        '0-1, share of the price paid for the cancellation protection'
+    )
 
 
 @sb.input
@@ -151,6 +157,10 @@ class UpdateState:
     )
     driver_buffer_minutes: Optional[int] = optional()
     allow_multiple_vehicles: Optional[bool] = optional()
+    allow_unconditional_refund: Optional[bool] = optional(
+        'needs cancelPriceRate > 0'
+    )
+    cancel_price_rate: Optional[Decimal] = optional('0-1')
 
 
 @sb.input
@@ -347,6 +357,10 @@ class PayTransfer:
     vehicle_category_id: sb.ID = required('one of vehicleOptions')
     vehicle_count: Optional[int] = optional(
         "At least the option's count, which is the default"
+    )
+    refund_option: Optional[enums.RefundOption] = optional(
+        'default STANDARD. UNCONDITIONAL adds cancelPrice (state '
+        'cancelPriceRate * customerPrice), only if the state allows it'
     )
 
 

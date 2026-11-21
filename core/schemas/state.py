@@ -11,6 +11,7 @@ from core import inputs, models, outputs, utils
 from core.decorators import permission_required
 
 
+ZERO = models.ZERO
 manager = models.State.objects
 
 
@@ -56,6 +57,10 @@ def check_penalty_rules(hours, rates):
 async def check_state(state):
     valid = bool(state.name.strip() and state.code.strip() and state.psp)
     valid = valid and state.driver_buffer_minutes >= 0
+    rate = state.cancel_price_rate
+    valid = valid and rate is not None and ZERO <= rate <= 1
+    # An enabled protection must cost something: cancel_price 0 is standard
+    valid = valid and (not state.allow_unconditional_refund or rate > ZERO)
     assert valid, dumps({'code': 'ERR030'})
     try:
         # Saved rates are strings (DjangoJSONEncoder), new ones Decimal

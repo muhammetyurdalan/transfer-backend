@@ -211,8 +211,6 @@ class VehicleCategoryOrder:
     exclude=['vehicles', 'transfers', 'transfer_drivers']
 )
 class VehicleCategory:
-    # Active language (user's language or the language argument). The
-    # translation descriptor reads the language columns, so load them too.
     name: Optional[str] = sbd.field(
         only=['name', 'name_en', 'name_tr', 'name_de', 'name_ru']
     )
@@ -239,7 +237,6 @@ class Reason:
     id: sb.ID
     code: str
     category: enums.ReasonCategory
-    # Active language (user's language or the language argument)
     description: Optional[str] = sbd.field(
         only=[
             'description', 'description_en', 'description_tr',
@@ -518,6 +515,10 @@ class Transfer:
     legs: Optional[List[Leg]]
     status: Optional[enums.TransferStatus]
     currency: Optional[enums.Currency]
+    price: Optional[Decimal] = sbd.field(
+        only=['customer_price', 'cancel_price'],
+        description='Paid total: customerPrice + cancelPrice'
+    )
     cancellation_reason_id: Optional[sb.ID]
     cancellation_reason: Optional[Reason] = sbd.field(
         description="Predefined reason, description in the user's language"
@@ -603,7 +604,6 @@ class Transaction:
     currency: Optional[enums.Currency]
 
     @sbd.field(
-        # The optimizer defers unrequested fields, category must be loaded
         only=['category'],
         description='PAYMENT/TIP: total of COMPLETED refunds, null for REFUND'
     )

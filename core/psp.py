@@ -84,14 +84,16 @@ def get_transaction(transfer, category, order_amount, **kwargs):
 
 async def get_payment_link(transfer):
     """
-    Payment link for transfer.price (the chosen vehicle category's price).
+    Payment link for transfer.price (customer_price + cancel_price).
     Any previous link is expired first, so only the latest choice is payable.
     """
     await expire_payment_link(transfer)
     transaction = get_transaction(transfer, Category.PAYMENT, transfer.price)
+    # price is a property: get_dict only has customer_price/cancel_price
+    transfer_data = {**utils.get_dict(transfer), 'price': transfer.price}
     data = {
         'psp': transfer.state.psp.lower(),
-        'transfer': utils.get_dict(transfer),
+        'transfer': transfer_data,
         'customer': utils.get_dict(transfer.customer),
         'transaction': utils.get_dict(transaction),
     }
@@ -394,16 +396,25 @@ def get_penalty_rate(transfer, cancel_time, waive_penalty=False):
 
 async def refund_cancelled_transfer(user, transfer, cancel_time):
     """
-    Refunds the transfer payment except the penalty share, if paid. A failed
-    refund stays PENDING, the cancellation still goes through.
+    Refunds the transfer payment, if paid. A failed refund stays PENDING,
+    the cancellation still goes through.
+    - OPERATOR/ADMIN/STAFF cancellation: everything is refunded.
+    - Customer with the cancellation protection (cancel_price > 0): any
+      time, customer_price is refunded, cancel_price is kept.
+    - Customer, standard: the state's penalty share is kept.
     """
     payments = transfer.transactions.filter(category=Category.PAYMENT)
     payment = await payments.afirst()
     if not payment:
         return None
     waive_penalty = user.role != enums.Role.CUSTOMER
-    penalty_rate = get_penalty_rate(transfer, cancel_time, waive_penalty)
-    kept = (payment.order_amount * penalty_rate).quantize(ZERO)
+    if waive_penalty:
+        kept = ZERO
+    elif transfer.has_unconditional_refund:
+        kept = min(transfer.cancel_price, payment.order_amount)
+    else:
+        penalty_rate = get_penalty_rate(transfer, cancel_time)
+        kept = (payment.order_amount * penalty_rate).quantize(ZERO)
     args = (payment.id, None, 'CANCELLED', kept)
     refund, _ = await create_refund(*args)
     if refund:

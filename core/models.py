@@ -38,6 +38,15 @@ class State(models.Model):
         default=False,
         help_text='Customers may book several vehicles of a category'
     )
+    allow_unconditional_refund = models.BooleanField(
+        default=False,
+        help_text='Customers may buy a cancellation protection at payment'
+    )
+    cancel_price_rate = models.DecimalField(
+        max_digits=5, decimal_places=4, default=ZERO,
+        help_text='Share (0-1) of the price paid for the cancellation '
+        'protection (Transfer.cancel_price)'
+    )
 
     class Meta:
         ordering = ['name']
@@ -357,7 +366,15 @@ class Transfer(models.Model):
         default=1,
         help_text='Vehicles of vehicle_category paid for'
     )
-    price = models.DecimalField(**DECIMAL_10, blank=True, null=True)
+    customer_price = models.DecimalField(
+        **DECIMAL_10, blank=True, null=True,
+        help_text='Vehicle price: unit price * vehicle_count'
+    )
+    cancel_price = models.DecimalField(
+        **DECIMAL_10, default=ZERO,
+        help_text='Cancellation protection (unconditional refund) fee, '
+        'never refunded on a customer cancellation. 0: standard refund'
+    )
     currency = models.CharField(
         max_length=3,
         choices=enums.Currency.choices,
@@ -387,6 +404,17 @@ class Transfer(models.Model):
 
     def __str__(self):
         return f'id: {self.id}, pickup: {self.pickup_time}'
+
+    @property
+    def price(self):
+        """Paid total: customer_price + cancel_price (None before a choice)."""
+        if self.customer_price is None:
+            return None
+        return self.customer_price + self.cancel_price
+
+    @property
+    def has_unconditional_refund(self):
+        return self.cancel_price > ZERO
 
     def save(self, *args, **kwargs):
         self.end_time = self.pickup_time + timedelta(minutes=self.duration)

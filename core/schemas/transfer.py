@@ -1,3 +1,4 @@
+from decimal import ROUND_HALF_UP
 from django.db.models import Q
 from django.db.models.aggregates import Count
 from django.utils import timezone
@@ -355,8 +356,21 @@ async def notify_unassigned(user, transfer, driver_id):
 def clear_vehicle_selection(transfer):
     transfer.vehicle_category = None
     transfer.vehicle_count = 1
-    transfer.price = None
+    transfer.customer_price = None
+    transfer.cancel_price = ZERO
     transfer.currency = None
+
+
+def get_cancel_price(transfer, refund_option):
+    """Cancellation protection fee, ZERO for the standard refund."""
+    if refund_option != enums.RefundOption.UNCONDITIONAL:
+        return ZERO
+    state = transfer.state
+    allowed = state is not None and state.allow_unconditional_refund
+    assert allowed, dumps({'code': 'ERR055'})
+    rate = state.cancel_price_rate
+    # Half up, like the client's preview
+    return (transfer.customer_price * rate).quantize(ZERO, ROUND_HALF_UP)
 
 
 def get_payment_response(link, expire_time):
@@ -481,8 +495,10 @@ class Mutation:
         """
         Sets the chosen vehicle category, vehicle count (at least the
         category's count in vehicleOptions, only 1 unless the state allows
-        multiple vehicles) and price (unit price * count), then returns a
-        payment link. The transfer becomes ACCEPTED when the payment service
+        multiple vehicles), customerPrice (unit price * count) and with
+        refundOption UNCONDITIONAL cancelPrice (ERR055 if the state doesn't
+        allow it), then returns a payment link for price (customerPrice +
+        cancelPrice). The transfer becomes ACCEPTED when the payment service
         reports a successful payment (psp-return), then operators are
         notified.
         """
@@ -502,7 +518,8 @@ class Mutation:
         price = category.get_price(transfer.distance, transfer.duration)
         transfer.vehicle_category = category
         transfer.vehicle_count = vehicle_count
-        transfer.price = price * vehicle_count
+        transfer.customer_price = price * vehicle_count
+        transfer.cancel_price = get_cancel_price(transfer, data.refund_option)
         transfer.currency = category.currency
         await psp.get_payment_link(transfer)
         await transfer.asave()

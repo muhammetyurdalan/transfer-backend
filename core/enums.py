@@ -84,6 +84,12 @@ class Language(TextChoices):
 
 
 @enum
+class RefundOption(TextChoices):
+    STANDARD = 'STANDARD'
+    UNCONDITIONAL = 'UNCONDITIONAL'
+
+
+@enum
 class ReasonCategory(TextChoices):
     CUSTOMER_TERMINATION = 'CUSTOMER_TERMINATION'
     CUSTOMER_CANCELLATION = 'CUSTOMER_CANCELLATION'

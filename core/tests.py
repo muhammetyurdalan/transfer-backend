@@ -255,7 +255,8 @@ mutation($id: ID!) { deleteDistrict(id: $id) { success } }
 '''
 STATE_FIELDS = '''
 id name code psp customerImposedHours customerImposedRates
-driverBufferMinutes allowMultipleVehicles
+driverBufferMinutes allowMultipleVehicles allowUnconditionalRefund
+cancelPriceRate
 '''
 STATES = '''
 query { states(ordering: [{name: ASC}]) { count states { name code } } }
@@ -411,13 +412,15 @@ class GraphQLTestCase(TestCase):
         )
         return self.ok(result, 'createTransfer')
 
-    async def paid_transfer(self, category=None, **kwargs):
+    async def paid_transfer(self, category=None, refund_option=None, **kwargs):
         created = await self.create_transfer(**kwargs)
         transfer_id = created['transfer']['id']
         data = {
             'id': transfer_id,
             'vehicleCategoryId': str((category or self.sedan).id)
         }
+        if refund_option:
+            data['refundOption'] = refund_option
         result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
         self.ok(result, 'payTransfer')
         response = await self.psp_return({
@@ -894,6 +897,95 @@ class ReasonTests(GraphQLTestCase):
         self.assertEqual(self.ok(result, 'reasons')[0]['id'], reason['id'])
         result = await self.execute(REASONS, {'isActive': True}, self.staff)
         self.assertEqual(self.ok(result, 'reasons'), [])
+
+
+class RefundOptionTests(GraphQLTestCase):
+    async def enable_protection(self, rate='0.10'):
+        await models.State.objects.filter(pk=self.turkey.id).aupdate(
+            allow_unconditional_refund=True, cancel_price_rate=Decimal(rate),
+            # Standard refund would keep 20% within 72 hours
+            customer_imposed_hours=[72], customer_imposed_rates=['0.20']
+        )
+
+    async def pay(self, refund_option):
+        created = await self.create_transfer()
+        data = {
+            'id': created['transfer']['id'],
+            'vehicleCategoryId': str(self.sedan.id),
+            'refundOption': refund_option
+        }
+        result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
+        return created['transfer']['id'], result
+
+    async def test_state_validation(self):
+        # The fixture state has no psp, which update_state requires
+        await models.State.objects.filter(pk=self.turkey.id).aupdate(psp='stripe')
+        cases = [
+            {'allowUnconditionalRefund': True},
+            {'allowUnconditionalRefund': True, 'cancelPriceRate': '0'},
+            {'cancelPriceRate': '1.5'},
+            {'cancelPriceRate': '-0.1'},
+        ]
+        for case in cases:
+            data = {'id': str(self.turkey.id), **case}
+            result = await self.execute(UPDATE_STATE, {'data': data}, self.staff)
+            self.assertEqual(self.error_code(result), 'ERR030', case)
+        data = {
+            'id': str(self.turkey.id), 'allowUnconditionalRefund': True,
+            'cancelPriceRate': '0.15'
+        }
+        result = await self.execute(UPDATE_STATE, {'data': data}, self.admin)
+        state = self.ok(result, 'updateState')
+        self.assertTrue(state['allowUnconditionalRefund'])
+        self.assertEqual(Decimal(state['cancelPriceRate']), Decimal('0.15'))
+        result = await self.execute(UPDATE_STATE, {'data': data}, self.operator)
+        self.assertEqual(self.error_code(result), 'ERR001')
+
+    async def test_not_allowed(self):
+        _, result = await self.pay('UNCONDITIONAL')
+        self.assertEqual(self.error_code(result), 'ERR055')
+
+    async def test_pay_with_protection(self):
+        await self.enable_protection()
+        transfer_id, result = await self.pay('UNCONDITIONAL')
+        self.ok(result, 'payTransfer')
+        transfer = await models.Transfer.objects.aget(pk=transfer_id)
+        self.assertEqual(transfer.customer_price, Decimal('605.00'))
+        self.assertEqual(transfer.cancel_price, Decimal('60.50'))
+        self.assertEqual(transfer.price, Decimal('665.50'))
+        _, payload = self.async_post.call_args.args
+        self.assertEqual(payload['transaction']['order_amount'], Decimal('665.50'))
+        self.assertEqual(payload['transfer']['price'], Decimal('665.50'))
+        # Choosing again without it clears the fee
+        data = {
+            'id': transfer_id, 'vehicleCategoryId': str(self.sedan.id),
+            'refundOption': 'STANDARD'
+        }
+        result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
+        self.ok(result, 'payTransfer')
+        transfer = await models.Transfer.objects.aget(pk=transfer_id)
+        self.assertEqual(transfer.cancel_price, Decimal('0.00'))
+        self.assertEqual(transfer.price, Decimal('605.00'))
+
+    async def refund_of(self, user, refund_option):
+        await self.enable_protection()
+        transfer = await self.paid_transfer(refund_option=refund_option)
+        result = await self.execute(CANCEL_TRANSFER, {'id': str(transfer.id)}, user)
+        self.assertEqual(self.ok(result, 'cancelTransfer')['status'], 'CANCELLED')
+        refund = await models.Transaction.objects.aget(category='REFUND')
+        return refund.order_amount
+
+    async def test_customer_cancel_keeps_only_the_fee(self):
+        refund = await self.refund_of(self.customer, 'UNCONDITIONAL')
+        self.assertEqual(refund, Decimal('605.00'))
+
+    async def test_customer_cancel_standard_keeps_penalty(self):
+        refund = await self.refund_of(self.customer, 'STANDARD')
+        self.assertEqual(refund, Decimal('484.00'))
+
+    async def test_operator_cancel_refunds_the_fee_too(self):
+        refund = await self.refund_of(self.operator, 'UNCONDITIONAL')
+        self.assertEqual(refund, Decimal('665.50'))
 
 
 class DriverPriceTests(GraphQLTestCase):
@@ -1475,7 +1567,7 @@ class TransferTests(GraphQLTestCase):
         id = created['transfer']['id']
         # A chosen vehicle is cleared by a route change
         await models.Transfer.objects.filter(pk=id).aupdate(
-            vehicle_category=self.sedan, price='500.00', currency='TRY'
+            vehicle_category=self.sedan, customer_price='500.00', currency='TRY'
         )
         query = UPDATE_TRANSFER.replace(
             'transfer {', 'transfer { legs { order endAddress }', 1
