@@ -50,6 +50,7 @@ deploy_frontend() {
   [ -f "$ROOT/env/frontend.env" ] || { echo "Missing $ROOT/env/frontend.env"; exit 1; }
   docker build -t "$(image transfer-frontend)" \
     --secret id=frontend_env,src="$ROOT/env/frontend.env" \
+    --build-arg FRONTEND_ENV_HASH="$(sha256sum "$ROOT/env/frontend.env" | cut -c1-16)" \
     "$SRC/transfer-frontend"
   docker compose up -d frontend
 }
