@@ -1,6 +1,7 @@
 import asyncio
 from datetime import timedelta
 from decimal import Decimal
+from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from fcm_django.models import FCMDevice
@@ -399,8 +400,8 @@ class GraphQLTestCase(TestCase):
             'dropoffDistrictName': 'Beyoglu',
             'pickupTime': pickup.isoformat(),
             'distance': '40.5', 'duration': 50,
-            'passengerName': 'Ada Lovelace', 'passengerCount': 2,
-            'luggageCount': 2,
+            'passengerName': 'Ada Lovelace', 'passengerPhone': '+905551112233',
+            'passengerCount': 2, 'luggageCount': 2,
         }
         data.update(kwargs)
         return data
@@ -986,6 +987,293 @@ class RefundOptionTests(GraphQLTestCase):
     async def test_operator_cancel_refunds_the_fee_too(self):
         refund = await self.refund_of(self.operator, 'UNCONDITIONAL')
         self.assertEqual(refund, Decimal('665.50'))
+
+
+QUOTE_TRANSFER = f'''
+query($data: QuoteTransfer!, $language: Language) {{
+  quoteTransfer(data: $data, language: $language) {{
+    vehicleOptions {{ {OPTION_FIELDS} }}
+    state {{
+      id allowMultipleVehicles allowUnconditionalRefund cancelPriceRate
+      customerImposedHours customerImposedRates psp driverBufferMinutes
+    }}
+  }}
+}}
+'''
+
+
+class PassengerTests(GraphQLTestCase):
+    """Passenger name and phone: the customer's unless given, required by payTransfer."""
+
+    def pay_data(self, transfer_id):
+        return {'id': transfer_id, 'vehicleCategoryId': str(self.sedan.id)}
+
+    async def customer_passenger(self, user):
+        user = await User.objects.aget(pk=user.id)
+        return f'{user.first_name} {user.last_name}'.strip(), user.phone
+
+    async def test_create_defaults_to_customer(self):
+        for blank in [None, ' ']:
+            data = self.transfer_data()
+            if blank is None:
+                del data['passengerName'], data['passengerPhone']
+            else:
+                data.update(passengerName=blank, passengerPhone=blank)
+            result = await self.execute(CREATE_TRANSFER, {'data': data}, self.customer)
+            id = self.ok(result, 'createTransfer')['transfer']['id']
+            transfer = await models.Transfer.objects.aget(pk=id)
+            self.assertEqual(
+                (transfer.passenger_name, transfer.passenger_phone),
+                await self.customer_passenger(self.customer)
+            )
+
+    async def test_create_trims_and_limits(self):
+        created = await self.create_transfer(
+            passengerName='  Ada  ', passengerPhone='  +905551112233 '
+        )
+        transfer = await models.Transfer.objects.aget(pk=created['transfer']['id'])
+        self.assertEqual(transfer.passenger_name, 'Ada')
+        self.assertEqual(transfer.passenger_phone, '+905551112233')
+        for field, value in [
+            ('passengerPhone', '+90555111223344556677'),
+            ('passengerName', 'a' * 101),
+        ]:
+            data = self.transfer_data(**{field: value})
+            result = await self.execute(CREATE_TRANSFER, {'data': data}, self.customer)
+            self.assertEqual(self.error_code(result), 'ERR030', field)
+
+    async def test_pay_fills_blank_passenger(self):
+        # Saved without a passenger (before the default): the customer's
+        created = await self.create_transfer()
+        id = created['transfer']['id']
+        await models.Transfer.objects.filter(pk=id).aupdate(
+            passenger_name='', passenger_phone=''
+        )
+        self.ok(await self.execute(PAY_TRANSFER, {'data': self.pay_data(id)}, self.customer), 'payTransfer')
+        transfer = await models.Transfer.objects.aget(pk=id)
+        self.assertEqual(
+            (transfer.passenger_name, transfer.passenger_phone),
+            await self.customer_passenger(self.customer)
+        )
+
+    async def test_pay_requires_passenger(self):
+        # Neither the transfer nor the customer has a phone
+        created = await self.create_transfer()
+        id = created['transfer']['id']
+        await models.Transfer.objects.filter(pk=id).aupdate(passenger_phone='')
+        await User.objects.filter(pk=self.customer.id).aupdate(phone='')
+        result = await self.execute(PAY_TRANSFER, {'data': self.pay_data(id)}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR057')
+
+    async def test_update_cannot_clear_passenger(self):
+        created = await self.create_transfer()
+        id = created['transfer']['id']
+        for field, code in [('passengerPhone', 'ERR057'), ('passengerName', 'ERR058')]:
+            data = {'id': id, field: ' '}
+            result = await self.execute(UPDATE_TRANSFER, {'data': data}, self.customer)
+            self.assertEqual(self.error_code(result), code, field)
+
+    async def test_update_other_fields_without_passenger(self):
+        created = await self.create_transfer()
+        id = created['transfer']['id']
+        await models.Transfer.objects.filter(pk=id).aupdate(passenger_name='', passenger_phone='')
+        data = {'id': id, 'note': 'Window seat'}
+        self.ok(await self.execute(UPDATE_TRANSFER, {'data': data}, self.customer), 'updateTransfer')
+
+
+class CreateSelectionTests(GraphQLTestCase):
+    """createTransfer saves an optional vehicle choice without a payment link."""
+
+    async def test_saves_choice_and_price(self):
+        await models.State.objects.filter(pk=self.turkey.id).aupdate(
+            allow_unconditional_refund=True, cancel_price_rate=Decimal('0.10')
+        )
+        with patch('core.psp.async_post') as post:
+            created = await self.create_transfer(
+                vehicleCategoryId=str(self.sedan.id), refundOption='UNCONDITIONAL'
+            )
+        post.assert_not_called()
+        transfer = await models.Transfer.objects.aget(pk=created['transfer']['id'])
+        sedan = await models.VehicleCategory.objects.aget(pk=self.sedan.id)
+        price = sedan.get_price(transfer.distance, transfer.duration)
+        self.assertEqual(transfer.status, 'PENDING')
+        self.assertEqual(transfer.vehicle_category_id, self.sedan.id)
+        self.assertEqual(transfer.vehicle_count, 1)
+        self.assertEqual(transfer.customer_price, price)
+        self.assertEqual(transfer.cancel_price, (price * Decimal('0.10')).quantize(Decimal('0.01')))
+        self.assertFalse(transfer.psp_data)
+
+    async def test_without_choice(self):
+        created = await self.create_transfer()
+        transfer = await models.Transfer.objects.aget(pk=created['transfer']['id'])
+        self.assertIsNone(transfer.vehicle_category_id)
+        self.assertIsNone(transfer.customer_price)
+
+    async def test_invalid_choice_creates_nothing(self):
+        cases = [
+            ({'vehicleCategoryId': '999999'}, 'ERR025'),
+            ({'vehicleCategoryId': str(self.sedan.id), 'vehicleCount': 2}, 'ERR047'),
+            ({'vehicleCategoryId': str(self.sedan.id), 'refundOption': 'UNCONDITIONAL'}, 'ERR055'),
+        ]
+        for extra, code in cases:
+            data = self.transfer_data(**extra)
+            result = await self.execute(CREATE_TRANSFER, {'data': data}, self.customer)
+            self.assertEqual(self.error_code(result), code, extra)
+        self.assertEqual(await models.Transfer.objects.acount(), 0)
+
+    async def test_update_saves_choice(self):
+        created = await self.create_transfer(vehicleCategoryId=str(self.sedan.id))
+        id = created['transfer']['id']
+        await models.Transfer.objects.filter(pk=id).aupdate(
+            psp_data={'psp': 'stripe', 'payment_link': 'https://pay/old'}
+        )
+        # Route change and a new choice in one update: priced for the new route
+        data = {
+            'id': id, 'distance': '60', 'vehicleCategoryId': str(self.sedan.id),
+            'vehicleCount': 1, 'refundOption': 'STANDARD'
+        }
+        self.ok(await self.execute(UPDATE_TRANSFER, {'data': data}, self.customer), 'updateTransfer')
+        transfer = await models.Transfer.objects.aget(pk=id)
+        sedan = await models.VehicleCategory.objects.aget(pk=self.sedan.id)
+        self.assertEqual(transfer.vehicle_category_id, self.sedan.id)
+        self.assertEqual(transfer.customer_price, sedan.get_price(Decimal('60'), transfer.duration))
+        paths = [call.args[0] for call in self.async_post.call_args_list]
+        self.assertIn('/expirePaymentLink', paths)
+        # Invalid choice changes nothing
+        data = {'id': id, 'note': 'x', 'vehicleCategoryId': '999999'}
+        result = await self.execute(UPDATE_TRANSFER, {'data': data}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR025')
+        transfer = await models.Transfer.objects.aget(pk=id)
+        self.assertNotEqual(transfer.note, 'x')
+
+    async def test_route_change_clears_choice(self):
+        created = await self.create_transfer(vehicleCategoryId=str(self.sedan.id))
+        id = created['transfer']['id']
+        data = {'id': id, 'passengerCount': 3}
+        self.ok(await self.execute(UPDATE_TRANSFER, {'data': data}, self.customer), 'updateTransfer')
+        transfer = await models.Transfer.objects.aget(pk=id)
+        self.assertIsNone(transfer.vehicle_category_id)
+
+
+class QuoteTests(GraphQLTestCase):
+    def setUp(self):
+        super().setUp()
+        # Rate limit counters live in the (locmem) cache across tests
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def quote_data(self, **kwargs):
+        data = {
+            'pickupDistrictName': 'Arnavutkoy', 'dropoffDistrictName': 'Beyoglu',
+            'distance': '40.5', 'duration': 50,
+            'passengerCount': 2, 'luggageCount': 2,
+        }
+        data.update(kwargs)
+        return data
+
+    async def quote(self, language=None, headers=None, **kwargs):
+        variables = {'data': self.quote_data(**kwargs), 'language': language}
+        body = dumps({'query': QUOTE_TRANSFER, 'variables': variables})
+        response = await self.async_client.post(
+            URL, body, content_type='application/json', headers=headers or {}
+        )
+        return loads(response.content)
+
+    async def test_guest_quote_matches_create_transfer(self):
+        quoted = self.ok(await self.quote(), 'quoteTransfer')
+        self.assertEqual(await models.Transfer.objects.acount(), 0)
+        created = await self.create_transfer()
+        self.assertEqual(quoted['vehicleOptions'], created['vehicleOptions'])
+        names = [o['vehicleCategory']['name'] for o in quoted['vehicleOptions']]
+        self.assertEqual(names, ['Sedan', 'Van', 'Accessible Van'])
+        self.assertEqual(quoted['vehicleOptions'][0]['price'], '605.00')
+
+    async def test_language_and_state(self):
+        await models.State.objects.filter(pk=self.turkey.id).aupdate(
+            psp='stripe', allow_multiple_vehicles=True,
+            allow_unconditional_refund=True, cancel_price_rate=Decimal('0.10'),
+            customer_imposed_hours=[24], customer_imposed_rates=['0.50']
+        )
+        result = self.ok(
+            await self.quote(language='TR', passengerCount=5), 'quoteTransfer'
+        )
+        sedan = result['vehicleOptions'][0]
+        self.assertEqual(sedan['vehicleCategory']['name'], 'Binek')
+        self.assertEqual(sedan['count'], 2)
+        state = result['state']
+        self.assertEqual(state['id'], str(self.turkey.id))
+        self.assertTrue(state['allowMultipleVehicles'])
+        self.assertTrue(state['allowUnconditionalRefund'])
+        self.assertEqual(Decimal(state['cancelPriceRate']), Decimal('0.10'))
+        self.assertEqual(state['customerImposedHours'], [24])
+        # Staff-only state fields stay hidden from guests
+        self.assertIsNone(state['psp'])
+        self.assertIsNone(state['driverBufferMinutes'])
+
+    async def test_stale_token_is_ignored(self):
+        result = await self.quote(headers={'authorization': 'expired-or-bad'})
+        self.ok(result, 'quoteTransfer')
+
+    async def test_validation(self):
+        past = (timezone.now() - timedelta(hours=1)).isoformat()
+        cases = [
+            ({'pickupDistrictName': 'Nowhere', 'dropoffDistrictName': 'None'}, 'ERR035'),
+            ({'distance': '0'}, 'ERR030'),
+            ({'distance': '2000.01'}, 'ERR030'),
+            ({'duration': 2 * 24 * 60 + 1}, 'ERR030'),
+            ({'passengerCount': 51}, 'ERR030'),
+            ({'luggageCount': 101}, 'ERR030'),
+            ({'childSeatCount': 21}, 'ERR030'),
+            ({'pickupTime': past}, 'ERR016'),
+        ]
+        for case, code in cases:
+            self.assertEqual(self.error_code(await self.quote(**case)), code, case)
+
+    async def test_create_transfer_upper_bounds(self):
+        data = self.transfer_data(distance='2500')
+        result = await self.execute(CREATE_TRANSFER, {'data': data}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR030')
+
+    @override_settings(QUOTE_RATE_LIMIT=2, QUOTE_RATE_WINDOW=60)
+    async def test_rate_limit(self):
+        self.ok(await self.quote(), 'quoteTransfer')
+        self.ok(await self.quote(), 'quoteTransfer')
+        self.assertEqual(self.error_code(await self.quote()), 'ERR056')
+        # Signing in doesn't lift it: the limit is per client IP
+        body = dumps({
+            'query': QUOTE_TRANSFER, 'variables': {'data': self.quote_data()}
+        })
+        headers = {'authorization': utils.create_token(self.customer.email)}
+        response = await self.async_client.post(
+            URL, body, content_type='application/json', headers=headers
+        )
+        self.assertEqual(self.error_code(loads(response.content)), 'ERR056')
+        # Another client has its own counter
+        cache.clear()
+        self.ok(await self.quote(), 'quoteTransfer')
+
+    @override_settings(QUOTE_RATE_LIMIT=2, QUOTE_RATE_WINDOW=60)
+    async def test_rate_limit_counts_aliases(self):
+        query = '''
+        query($data: QuoteTransfer!) {
+          a: quoteTransfer(data: $data) { state { id } }
+          b: quoteTransfer(data: $data) { state { id } }
+          c: quoteTransfer(data: $data) { state { id } }
+        }
+        '''
+        body = dumps({'query': query, 'variables': {'data': self.quote_data()}})
+        response = await self.async_client.post(
+            URL, body, content_type='application/json'
+        )
+        result = loads(response.content)
+        codes = [loads(e['message'])['code'] for e in result['errors']]
+        self.assertEqual(codes, ['ERR056'])
+
+    @override_settings(QUOTE_RATE_LIMIT=1)
+    async def test_cache_outage_allows_quote(self):
+        with patch('core.ratelimit.cache.aadd', side_effect=ConnectionError):
+            self.ok(await self.quote(), 'quoteTransfer')
+            self.ok(await self.quote(), 'quoteTransfer')
 
 
 class DriverPriceTests(GraphQLTestCase):

@@ -1,4 +1,5 @@
-from decimal import ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP
+from django.conf import settings
 from django.db.models import Q
 from django.db.models.aggregates import Count
 from django.utils import timezone
@@ -12,6 +13,7 @@ from strawberry_django.pagination import OffsetPaginationInput
 from typing import List, Optional
 from core import enums, inputs, models, outputs, psp, utils
 from core.decorators import permission_required
+from core.ratelimit import check_rate_limit
 
 
 User = utils.User
@@ -39,7 +41,17 @@ EXTERNAL_DRIVER_FIELDS = [
 ]
 PRICE_FIELDS = ['driver_price', 'driver_price_currency']
 DRIVER_EDITABLE_STATUSES = [Status.ACCEPTED, Status.STARTED]
-IGNORED_CREATE_FIELDS = [*DISTRICT_NAME_FIELDS, 'legs']
+SELECTION_FIELDS = ['vehicle_category_id', 'vehicle_count', 'refund_option']
+IGNORED_CREATE_FIELDS = [*DISTRICT_NAME_FIELDS, 'legs', *SELECTION_FIELDS]
+PASSENGER_FIELDS = {
+    'passenger_name': (100, 'ERR058'),
+    'passenger_phone': (20, 'ERR057'),
+}
+MAX_DISTANCE = Decimal('2000')
+MAX_DURATION = 2 * 24 * 60
+MAX_PASSENGERS = 50
+MAX_LUGGAGE = 100
+MAX_CHILD_SEATS = 20
 
 
 async def get_transfer(user, id, statuses=None, expand=()):
@@ -129,6 +141,35 @@ class Query:
         activate(user.language)
         return await get_vehicle_options(transfer)
     
+    @sbd.field(description='Public, rate limited per client IP (ERR056)')
+    async def quote_transfer(
+        root, info: Info,
+        data: inputs.QuoteTransfer,
+        language: Optional[enums.Language] = sb.UNSET
+    ) -> outputs.QuoteResponse:
+        """
+        Price preview before sign in: the vehicle options createTransfer would
+        return for the same route and needs (same checks, districts, state and
+        prices), nothing is saved. The token is not read, so a stale token in
+        a guest's browser can't fail it. Names are in `language` (default en).
+        """
+        limit = settings.QUOTE_RATE_LIMIT
+        window = settings.QUOTE_RATE_WINDOW
+        await check_rate_limit(info, 'quote', limit, window)
+        transfer = models.Transfer()
+        ignored = DISTRICT_NAME_FIELDS
+        utils.set_attributes(transfer, data, ignored=ignored, set_nulls=False)
+        check_transfer(transfer)
+        if transfer.pickup_time:
+            check_pickup_time(transfer.pickup_time)
+        await set_districts(transfer, data)
+        activate(language or enums.Language.EN)
+        vehicle_options = await get_vehicle_options(transfer)
+        return outputs.QuoteResponse(
+            vehicle_options=vehicle_options,
+            state=transfer.state
+        )
+
     @sbd.field(description='Public')
     async def check_districts(
         root, info: Info,
@@ -183,11 +224,11 @@ class Query:
 
 def check_transfer(transfer):
     valid = (
-        transfer.distance > ZERO
-        and transfer.duration > 0
-        and transfer.passenger_count >= 1
-        and transfer.luggage_count >= 0
-        and transfer.child_seat_count >= 0
+        ZERO < transfer.distance <= MAX_DISTANCE
+        and 0 < transfer.duration <= MAX_DURATION
+        and 1 <= transfer.passenger_count <= MAX_PASSENGERS
+        and 0 <= transfer.luggage_count <= MAX_LUGGAGE
+        and 0 <= transfer.child_seat_count <= MAX_CHILD_SEATS
     )
     assert valid, dumps({'code': 'ERR030'})
     transfer.distance = transfer.distance.quantize(ZERO)
@@ -224,8 +265,6 @@ async def set_districts(transfer, data):
     transfer.pickup_district_id = pickup['id'] if pickup else None
     transfer.dropoff_district_id = dropoff['id'] if dropoff else None
     state_id = (pickup or dropoff)['city__state_id']
-    # The state is loaded once here (get_vehicle_options reads it), and only
-    # again when the districts move the transfer to another state
     loaded = models.Transfer.state.is_cached(transfer)
     if state_id != transfer.state_id or not loaded:
         transfer.state = await models.State.objects.aget(pk=state_id)
@@ -273,6 +312,49 @@ async def set_legs(transfer, legs):
         instances.append(leg)
     if instances:
         await models.Leg.objects.abulk_create(instances)
+
+
+def set_default_passenger(transfer, customer):
+    """Blank passenger name/phone default to the customer's."""
+    if not (transfer.passenger_name or '').strip():
+        name = f'{customer.first_name} {customer.last_name}'.strip()
+        transfer.passenger_name = name[:100]
+    if not (transfer.passenger_phone or '').strip():
+        transfer.passenger_phone = (customer.phone or '').strip()[:20]
+
+
+def check_passenger(transfer, required=()):
+    """
+    Trims the passenger name and phone, too long is ERR030. The required
+    ones can't be blank (name ERR058, phone ERR057): none on create, the
+    given ones on update, both on payTransfer.
+    """
+    for field, (max_length, code) in PASSENGER_FIELDS.items():
+        value = (getattr(transfer, field) or '').strip()
+        assert len(value) <= max_length, dumps({'code': 'ERR030'})
+        assert value or field not in required, dumps({'code': code})
+        setattr(transfer, field, value)
+
+
+async def set_vehicle_selection(transfer, category_id, vehicle_count, refund_option):
+    """
+    The chosen category (one of the vehicle options, ERR025), vehicle count
+    (at least the option's count ERR046, 1 unless the state allows multiple
+    vehicles ERR047), customerPrice and cancelPrice. Needs transfer.state.
+    """
+    categories, multiple = get_vehicle_categories(transfer)
+    category = await categories.filter(pk=category_id).afirst()
+    assert category, dumps({'code': 'ERR025'})
+    if vehicle_count in (sb.UNSET, None):
+        vehicle_count = category.count
+    assert vehicle_count >= category.count, dumps({'code': 'ERR046'})
+    assert multiple or vehicle_count == 1, dumps({'code': 'ERR047'})
+    price = category.get_price(transfer.distance, transfer.duration)
+    transfer.vehicle_category = category
+    transfer.vehicle_count = vehicle_count
+    transfer.customer_price = price * vehicle_count
+    transfer.cancel_price = get_cancel_price(transfer, refund_option)
+    transfer.currency = category.currency
 
 
 def check_pickup_time(pickup_time):
@@ -369,7 +451,6 @@ def get_cancel_price(transfer, refund_option):
     allowed = state is not None and state.allow_unconditional_refund
     assert allowed, dumps({'code': 'ERR055'})
     rate = state.cancel_price_rate
-    # Half up, like the client's preview
     return (transfer.customer_price * rate).quantize(ZERO, ROUND_HALF_UP)
 
 
@@ -420,7 +501,11 @@ class Mutation:
         root, info: Info,
         data: inputs.CreateTransfer
     ) -> outputs.TransferResponse:
-        """Creates a PENDING transfer and returns its vehicle options."""
+        """
+        Creates a PENDING transfer and returns its vehicle options. A blank
+        passenger name/phone is the customer's. With vehicleCategoryId the
+        choice and its price are saved (no payment link).
+        """
         user = info.context['user']
         customer_id = user.id
         if user.role != Role.CUSTOMER and data.customer_id:
@@ -431,10 +516,17 @@ class Mutation:
         transfer = models.Transfer(customer_id=customer_id)
         ignored = IGNORED_CREATE_FIELDS
         utils.set_attributes(transfer, data, ignored=ignored, set_nulls=False)
+        set_default_passenger(transfer, user)
         check_transfer(transfer)
+        check_passenger(transfer)
         check_pickup_time(transfer.pickup_time)
         check_legs(data.legs)
         await set_districts(transfer, data)
+        if data.vehicle_category_id:
+            await set_vehicle_selection(
+                transfer, data.vehicle_category_id, data.vehicle_count,
+                data.refund_option
+            )
         await transfer.asave()
         await set_legs(transfer, data.legs)
         activate(user.language)
@@ -453,7 +545,9 @@ class Mutation:
         """
         Only while PENDING. A route change (route fields or legs) clears the
         chosen vehicle category and expires its payment link, the customer
-        chooses again. Given legs replace all of the transfer's legs.
+        chooses again. vehicleCategoryId saves a new choice (priced for the
+        updated transfer, payTransfer rules) and expires the payment link.
+        Given legs replace all of the transfer's legs.
         """
         user = info.context['user']
         expand = ['customer', 'state']
@@ -462,9 +556,12 @@ class Mutation:
             if value is not None
         }
         transfer = await get_transfer(user, data.id, EDITABLE_STATUSES, expand)
-        ignored = ['id', 'legs', *DISTRICT_NAME_FIELDS]
+        ignored = ['id', 'legs', *DISTRICT_NAME_FIELDS, *SELECTION_FIELDS]
         utils.set_attributes(transfer, data, ignored=ignored, set_nulls=False)
         check_transfer(transfer)
+        check_passenger(transfer, required=[
+            field for field in PASSENGER_FIELDS if field in fields
+        ])
         check_pickup_time(transfer.pickup_time)
         legs_given = data.legs is not sb.UNSET and data.legs is not None
         if legs_given:
@@ -473,8 +570,14 @@ class Mutation:
             await set_districts(transfer, data)
         route_changed = any(fields.get(key) is not None for key in ROUTE_FIELDS)
         if route_changed or legs_given:
-            await psp.expire_payment_link(transfer)
             clear_vehicle_selection(transfer)
+        if data.vehicle_category_id:
+            await set_vehicle_selection(
+                transfer, data.vehicle_category_id, data.vehicle_count,
+                data.refund_option
+            )
+        if route_changed or legs_given or data.vehicle_category_id:
+            await psp.expire_payment_link(transfer)
         await transfer.asave()
         if legs_given:
             await transfer.legs.all().adelete()
@@ -493,7 +596,8 @@ class Mutation:
         data: inputs.PayTransfer
     ) -> outputs.PaymentResponse:
         """
-        Sets the chosen vehicle category, vehicle count (at least the
+        Fills a blank passenger name/phone from the customer (still blank:
+        ERR058/ERR057), sets the chosen vehicle category, vehicle count (at least the
         category's count in vehicleOptions, only 1 unless the state allows
         multiple vehicles), customerPrice (unit price * count) and with
         refundOption UNCONDITIONAL cancelPrice (ERR055 if the state doesn't
@@ -506,21 +610,12 @@ class Mutation:
         expand = ['customer', 'state']
         transfer = await get_transfer(user, data.id, EDITABLE_STATUSES, expand)
         check_pickup_time(transfer.pickup_time)
-        categories, multiple = get_vehicle_categories(transfer)
-        categories = categories.filter(pk=data.vehicle_category_id)
-        category = await categories.afirst()
-        assert category, dumps({'code': 'ERR025'})
-        vehicle_count = data.vehicle_count
-        if vehicle_count in (sb.UNSET, None):
-            vehicle_count = category.count
-        assert vehicle_count >= category.count, dumps({'code': 'ERR046'})
-        assert multiple or vehicle_count == 1, dumps({'code': 'ERR047'})
-        price = category.get_price(transfer.distance, transfer.duration)
-        transfer.vehicle_category = category
-        transfer.vehicle_count = vehicle_count
-        transfer.customer_price = price * vehicle_count
-        transfer.cancel_price = get_cancel_price(transfer, data.refund_option)
-        transfer.currency = category.currency
+        set_default_passenger(transfer, transfer.customer)
+        check_passenger(transfer, required=PASSENGER_FIELDS)
+        await set_vehicle_selection(
+            transfer, data.vehicle_category_id, data.vehicle_count,
+            data.refund_option
+        )
         await psp.get_payment_link(transfer)
         await transfer.asave()
         return get_payment_response(
@@ -696,7 +791,6 @@ class Mutation:
         )
         args = (user.id, action, receiver_ids)
         await utils.broadcast(*args, transfer_id=str(transfer.id))
-        # notify_users activates each receiver's language
         activate(user.language)
         return transfer
 

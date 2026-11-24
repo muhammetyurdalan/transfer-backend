@@ -42,11 +42,18 @@ def check_phone(phone):
     return phone
 
 
-def set_attributes(instance, data, ignored=None, set_nulls=True):
+def set_attributes(instance, data, ignored=None, set_nulls=True, fields=None):
+    """
+    Copies the input's values to the instance, skipping UNSET (and None
+    unless set_nulls). ignored: fields to skip; fields: only these (None:
+    all of the input's fields).
+    """
     ignored = ignored or []
     if not isinstance(data, dict):
         data = sb.asdict(data)
     for attribute, value in data.items():
+        if fields is not None and attribute not in fields:
+            continue
         if attribute in ignored or value is sb.UNSET:
             continue
         if not set_nulls and value is None:

@@ -121,6 +121,21 @@ CHANNEL_LAYERS = {
 }
 
 
+# Cache: rate limit counters (core/ratelimit.py), shared by all workers
+
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': env('CACHE_URL', REDIS_URL),
+        'KEY_PREFIX': 'transfer',
+    }
+}
+
+# Public price preview (quoteTransfer): requests per client IP per window
+QUOTE_RATE_LIMIT = int(env('QUOTE_RATE_LIMIT', '30'))
+QUOTE_RATE_WINDOW = int(env('QUOTE_RATE_WINDOW', '60'))
+
+
 # Microservices (payment, mail), both use MS_ACCESS_TOKEN
 
 PSP_MS_URL = env('PSP_MS_URL', '')

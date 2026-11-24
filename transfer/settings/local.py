@@ -14,6 +14,12 @@ CHANNEL_LAYERS = {
     'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}
 }
 
+# Cache: in-process, no Redis needed
+
+CACHES = {
+    'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}
+}
+
 
 # Celery: tasks run inline, no broker needed locally
 

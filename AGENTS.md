@@ -47,9 +47,10 @@ Kayıt e-posta doğrulamalı (`getCode` → `validateCode`) iki mutation'la yap�
 ## 4. Akış
 
 ```
-createTransfer ──► PENDING + vehicleOptions (uygun kategoriler, her biri fiyatlı)
-   │ (updateTransfer: rota/ihtiyaç değişirse seçim sıfırlanır, link expire edilir)
-payTransfer(vehicleCategoryId, vehicleCount?, refundOption?) ──► kategori + araç sayısı + customer_price (birim × sayı) + cancel_price (koşulsuz iadede) yazılır, /createPaymentLink (price = toplam)
+(misafir) quoteTransfer ──► aynı vehicleOptions + state, hiçbir şey kaydedilmez (§4.1.1)
+createTransfer(vehicleCategoryId?, vehicleCount?, refundOption?) ──► PENDING + vehicleOptions (uygun kategoriler, her biri fiyatlı); seçim verilirse fiyatıyla kaydedilir, link açılmaz
+   │ (updateTransfer: rota/ihtiyaç değişirse seçim sıfırlanır, link expire edilir; vehicleCategoryId verilirse yeni seçim yazılır)
+payTransfer(vehicleCategoryId, vehicleCount?, refundOption?) ──► yolcu boşsa müşteriden (yine boşsa ERR058/ERR057), kategori + araç sayısı + customer_price (birim × sayı) + cancel_price (koşulsuz iadede) yazılır, /createPaymentLink (price = toplam)
    │
 psp-return PAYMENT_RETURN success ──► PAID, PAYMENT transaction, tüm OPERATOR'lere bildirim (TRANSFER_PAID)
    │
@@ -83,7 +84,18 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - **Fiyat** (`VehicleCategory.get_price`): `max(minimum_fare, base_fare + distance_km * per_km_price + duration_min * per_minute_price)`, 2 ondalık.
 - `distance` (km) ve `duration` (dk) istemciden gelir (harita SDK'sı), fiyat her zaman sunucuda hesaplanır.
 - **Araç sayısı** (`VehicleCategoryQuerySet.options_for`, `get_vehicle_categories`): transferin state'inde `allow_multiple_vehicles` (varsayılan `False`, `createState`/`updateState`) açıksa `with_counts` kullanılır: kapasiteyi aşan kategoriler de döner, `count` = `max(ceil(passenger_count / max_passengers), ceil(luggage_count / max_luggage))`. Kapalıysa (veya transferin state'i yoksa) `eligible_for` + `count=1`, yani sadece tek araca sığan kategoriler. Bayrak `transfer.state`'ten okunur (`allows_multiple_vehicles`, sorgu atmaz): çağıranlar state'i `expand=['state']` ile yükler, `createTransfer`/`updateTransfer`'da `set_districts` state değişince yenisini yükler. Çocuk koltuğu ve tekerlekli sandalye araç başına filtredir. `price` tek araç fiyatıdır. `payTransfer(vehicleCategoryId, vehicleCount?)` aynı listeyi kullanır: `vehicleCount` verilmezse kategorinin `count`'u, `count`'tan azsa `ERR046`, bayrak kapalıyken 1'den farklıysa `ERR047`. `Transfer.vehicle_count`'a yazılır, `customer_price` = birim fiyat × `vehicle_count`. Seçim sıfırlanınca (`clear_vehicle_selection`) `vehicle_count` 1, `customer_price` `null`, `cancel_price` 0 olur. Atama sayısı `vehicle_count`'u aşamaz (§4.2).
+- **Yolcu bilgisi** (`set_default_passenger`, `check_passenger`): `passengerName` (100) ve `passengerPhone` (20) `createTransfer`'da opsiyonel; verilmezse/boşsa transferin müşterisinin adı soyadı ve telefonu yazılır (personel `customerId` ile açarsa o müşterininki). Boşluk atılır, uzunsa `ERR030`. `payTransfer` yolcu almaz: transferde boşsa (eski kayıt) yine müşteriden doldurur, hâlâ boşsa ad `ERR058`, telefon `ERR057`. `updateTransfer` verilen alanı boşa çeviremez (`ERR058`/`ERR057`), verilmeyene bakmaz.
+- **Oluşturmada seçim** (`set_vehicle_selection`, `payTransfer` ile ortak): `createTransfer` opsiyonel `vehicleCategoryId`/`vehicleCount`/`refundOption` alır; verilirse `payTransfer`'daki aynı kurallarla (`ERR025`/`ERR046`/`ERR047`/`ERR055`, hata varsa transfer oluşmaz) kategori, adet, `customer_price`, `cancel_price` yazılır, ödeme linki açılmaz. `updateTransfer` da aynı alanları alır: seçim güncellenen transfere göre (yeni rota/ihtiyaç) fiyatlanır ve varsa ödeme linki expire edilir; rota değişip seçim verilmezse seçim sıfırlanır. `payTransfer` seçimi değiştirebilir.
+- **Sınırlar** (`check_transfer`, `createTransfer`/`updateTransfer`/`quoteTransfer`): `0 < distance ≤ 2000` km, `0 < duration ≤ 2880` dk, `1 ≤ passengerCount ≤ 50`, `luggageCount ≤ 100`, `childSeatCount ≤ 20`, değilse `ERR030`.
 - `vehicleOptions(transferId)` aynı listeyi tekrar döner. İsimler kullanıcının dilinde döner. Public `vehicleCategories(language)` sorgusunda dil argümandan alınır.
+
+### 4.1.1 Fiyat önizlemesi (`quoteTransfer`, public)
+- Girişten önce fiyat göstermek için: `quoteTransfer(data: QuoteTransfer, language?)` → `QuoteResponse { vehicleOptions, state }`. `QuoteTransfer` sadece fiyatı/uygunluğu belirleyen alanlar: district adları, `distance`, `duration`, opsiyonel `pickupTime` (verilirse gelecekte, `ERR016`), kişi/bagaj/çocuk koltuğu/tekerlekli sandalye.
+- `createTransfer` ile aynı yol: kaydedilmemiş bir `Transfer` üzerinde `check_transfer` → `set_districts` (`ERR035`, state, operatör) → `get_vehicle_options`. Aynı girdiyle `createTransfer`'ın `vehicleOptions`'ıyla birebir aynı sonuç (test edilir). **DB'ye yazmaz.** Bağlayıcı değildir: fiyat/kategori/bölge ayarı arada değişebilir, ödenen fiyat her zaman `createTransfer`/`payTransfer` sonucudur.
+- `state` çoklu araç ve iade seçeneklerini önizlemek içindir (`allowMultipleVehicles`, `allowUnconditionalRefund`, `cancelPriceRate`, `customerImposed*`); `psp`/`driverBufferMinutes` misafire `null` (`permissions.json`).
+- **Token okunmaz** (misafirin tarayıcısındaki bayat token `ERR002/003` üretmesin). İsimler `language`'da, verilmezse `en`.
+- **Rate limit** (`core/ratelimit.py`): client IP başına sabit pencere, `QUOTE_RATE_LIMIT` (30) / `QUOTE_RATE_WINDOW` (60 s), aşılınca `ERR056`. Her resolver çağrısı sayılır, yani tek istekteki alias'lar (`a: quoteTransfer b: quoteTransfer`) ayrı ayrı sayılır. Giriş yapmak limiti kaldırmaz. Sayaçlar Django cache'inde (`CACHES`, Redis, `CACHE_URL` yoksa `REDIS_URL`, `KEY_PREFIX=transfer`; local/test locmem). Cache'e ulaşılamazsa istek **geçer** (loglanır), Redis kesintisi rezervasyonu durdurmaz.
+- **Client IP:** prod'da channels consumer'ın `scope['client']`'ı. daphne `--proxy-headers` bunu Caddy'nin yazdığı `X-Forwarded-For`'dan alır; Caddy `trusted_proxies` olmadan istemcinin gönderdiği `X-Forwarded-For`'u yok sayar, yani sahte IP ile limit atlanamaz. Caddy önüne CDN/başka proxy eklenirse (ör. Cloudflare) Caddy'de `trusted_proxies` ayarlanmalı, yoksa herkes proxy'nin IP'sini paylaşır. Django view'da (testler) `REMOTE_ADDR`.
 
 ### 4.2 Uygun sürücü sorgusu (`core/managers.py`)
 - **Atamalar** (`TransferDriver`, `Transfer.drivers`): bir transferde en fazla `vehicle_count` kadar sürücü olur. **İç sürücü** `driver` (DRIVER kullanıcısı) + `vehicle` taşır, `driver_name` kullanıcının adından, `plate`/`vehicle_brand`/`vehicle_model` aracın plaka/marka/modelinden kopyalanır. **Dış sürücü** sistemde hesabı olmayan kişidir: `driver`/`vehicle` boş, `driver_name` (zorunlu, 100), `driver_phone` (20), `plate` (20), `vehicle_brand`/`vehicle_model` (50) elle girilir. `vehicle_category` her zaman transferin kategorisidir (atamada yazılır, seçilmez; iç sürücüler zaten bu kategoride boş aracı olanlardır). `isExternal` = `driverId` boş. Aynı iç sürücü bir transferde bir kez olabilir (`unique_transfer_driver`). Atamalar transferin `status`'ünü **değiştirmez**.
@@ -162,7 +174,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR056**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR059**.
 
 | Aralık | Alan |
 |---|---|
@@ -171,6 +183,8 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 | ERR017–ERR024 | Mesajlaşma |
 | ERR025–ERR029, ERR046–ERR047 | Araç kategorisi, araç (ERR046: araç sayısı kategorinin gereksiniminden az, ERR047: state çoklu araca izin vermiyor) |
 | ERR030 | Geçersiz parametre |
+| ERR057, ERR058 | Yolcu telefonu / adı zorunlu (`payTransfer`, `updateTransfer`'da boşa çevirme) |
+| ERR056 | Çok fazla istek (rate limit, `quoteTransfer`) |
 | ERR031–ERR034, ERR042, ERR055 | Ödeme (ERR042: iade zaten tamamlandı, ERR055: state koşulsuz iadeye izin vermiyor) |
 | ERR036–ERR038 | State |
 | ERR039–ERR041 | City, district (ERR039: city bulunamadı, ERR040/041: kullanımda) |

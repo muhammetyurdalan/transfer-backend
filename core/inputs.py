@@ -306,12 +306,40 @@ class CreateTransfer:
     luggage_count: Optional[int] = optional('default 0')
     child_seat_count: Optional[int] = optional('default 0')
     needs_wheelchair: Optional[bool] = optional('default false')
-    passenger_name: str = required('100 chars max')
-    passenger_phone: Optional[str] = optional('20 chars max')
+    passenger_name: Optional[str] = optional(
+        "100 chars max, default the customer's name"
+    )
+    passenger_phone: Optional[str] = optional(
+        "20 chars max, default the customer's phone"
+    )
     flight_number: Optional[str] = optional('10 chars max')
     note: Optional[str] = optional()
     legs: Optional[List[CreateLeg]] = optional()
     customer_id: Optional[sb.ID] = optional('for operators')
+    vehicle_category_id: Optional[sb.ID] = optional(
+        'chosen vehicle (one of vehicleOptions, ERR025), saved with its '
+        'price without a payment link; payTransfer can change it'
+    )
+    vehicle_count: Optional[int] = optional(
+        'with vehicleCategoryId, see PayTransfer'
+    )
+    refund_option: Optional[enums.RefundOption] = optional(
+        'with vehicleCategoryId, see PayTransfer'
+    )
+
+
+@sb.input
+class QuoteTransfer:
+    """Only what decides the vehicle options and prices (see CreateTransfer)."""
+    pickup_district_name: str = required('at least one must be found')
+    dropoff_district_name: str = required('at least one must be found')
+    distance: Decimal = required('route distance in km, > 0, 6.2')
+    duration: int = required('route duration in minutes, > 0')
+    pickup_time: Optional[datetime] = optional('future if given')
+    passenger_count: Optional[int] = optional('default 1')
+    luggage_count: Optional[int] = optional('default 0')
+    child_seat_count: Optional[int] = optional('default 0')
+    needs_wheelchair: Optional[bool] = optional('default false')
 
 
 @sb.input   
@@ -342,12 +370,22 @@ class UpdateTransfer:
     luggage_count: Optional[int] = optional()
     child_seat_count: Optional[int] = optional()
     needs_wheelchair: Optional[bool] = optional()
-    passenger_name: Optional[str] = optional('100 chars max')
-    passenger_phone: Optional[str] = optional('20 chars max')
+    passenger_name: Optional[str] = optional('100 chars max, not blank (ERR058)')
+    passenger_phone: Optional[str] = optional('20 chars max, not blank (ERR057)')
     flight_number: Optional[str] = optional('10 chars max')
     note: Optional[str] = optional()
     legs: Optional[List[CreateLeg]] = optional(
         'replaces all legs (stops), [] removes them; counts as a route change'
+    )
+    vehicle_category_id: Optional[sb.ID] = optional(
+        'new vehicle choice (one of the vehicle options after this update, '
+        'ERR025), saved with its price; expires the payment link'
+    )
+    vehicle_count: Optional[int] = optional(
+        'with vehicleCategoryId, see PayTransfer'
+    )
+    refund_option: Optional[enums.RefundOption] = optional(
+        'with vehicleCategoryId, see PayTransfer'
     )
 
 

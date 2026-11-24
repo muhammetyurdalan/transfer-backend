@@ -558,6 +558,14 @@ class TransferResponse:
 
 
 @sb.type
+class QuoteResponse:
+    vehicle_options: List[VehicleOption]
+    state: State = sb.field(
+        description='State of the route: multiple vehicles and refund options'
+    )
+
+
+@sb.type
 class PaymentResponse:
     payment_link: Optional[str] = None
     link_expire_time: Optional[datetime] = None

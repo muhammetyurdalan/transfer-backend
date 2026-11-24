@@ -29,6 +29,12 @@ DATABASES = {
 CHANNEL_LAYERS = {
     'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}
 }
+
+# Cache: in-process, no Redis needed
+
+CACHES = {
+    'default': {'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}
+}
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 PASSWORD_HASHERS = ['django.contrib.auth.hashers.MD5PasswordHasher']
