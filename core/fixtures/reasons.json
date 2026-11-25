@@ -179,13 +179,13 @@
     "model": "core.reason",
     "pk": 12,
     "fields": {
-      "code": "cancel_vehicle_type_mismatch",
+      "code": "cancel_luggage_capacity",
       "category": "CUSTOMER_CANCELLATION",
-      "description": "Vehicle type does not meet expectations",
-      "description_en": "Vehicle type does not meet expectations",
-      "description_tr": "Araç tipi beklentime uymuyor",
-      "description_de": "Der Fahrzeugtyp entspricht nicht meinen Erwartungen",
-      "description_ru": "Тип автомобиля не соответствует ожиданиям",
+      "description": "Insufficient luggage capacity",
+      "description_en": "Insufficient luggage capacity",
+      "description_tr": "Bagaj kapasitesi yetersiz",
+      "description_de": "Unzureichende Gepäckkapazität",
+      "description_ru": "Недостаточно места для багажа",
       "order": 3,
       "is_active": true,
       "created_at": "2026-11-21T00:00:00Z"
@@ -195,13 +195,13 @@
     "model": "core.reason",
     "pk": 13,
     "fields": {
-      "code": "cancel_luggage_capacity",
+      "code": "cancel_extra_requests_unmet",
       "category": "CUSTOMER_CANCELLATION",
-      "description": "Insufficient luggage capacity",
-      "description_en": "Insufficient luggage capacity",
-      "description_tr": "Bagaj kapasitesi yetersiz",
-      "description_de": "Unzureichende Gepäckkapazität",
-      "description_ru": "Недостаточно места для багажа",
+      "description": "Additional requests not fulfilled (e.g. baby seat)",
+      "description_en": "Additional requests not fulfilled (e.g. baby seat)",
+      "description_tr": "Ek isteklerim karşılanmadı (bebek koltuğu vb.)",
+      "description_de": "Zusätzliche Wünsche nicht erfüllt (z. B. Kindersitz)",
+      "description_ru": "Дополнительные пожелания не выполнены (например, детское кресло)",
       "order": 4,
       "is_active": true,
       "created_at": "2026-11-21T00:00:00Z"
@@ -211,13 +211,13 @@
     "model": "core.reason",
     "pk": 14,
     "fields": {
-      "code": "cancel_extra_requests_unmet",
+      "code": "cancel_operator_unreachable",
       "category": "CUSTOMER_CANCELLATION",
-      "description": "Additional requests not fulfilled (e.g. baby seat)",
-      "description_en": "Additional requests not fulfilled (e.g. baby seat)",
-      "description_tr": "Ek isteklerim karşılanmadı (bebek koltuğu vb.)",
-      "description_de": "Zusätzliche Wünsche nicht erfüllt (z. B. Kindersitz)",
-      "description_ru": "Дополнительные пожелания не выполнены (например, детское кресло)",
+      "description": "Unable to contact the operator",
+      "description_en": "Unable to contact the operator",
+      "description_tr": "Operatörle iletişim kuramadım",
+      "description_de": "Der Operator ist nicht erreichbar",
+      "description_ru": "Не удалось связаться с оператором",
       "order": 5,
       "is_active": true,
       "created_at": "2026-11-21T00:00:00Z"
@@ -227,13 +227,13 @@
     "model": "core.reason",
     "pk": 15,
     "fields": {
-      "code": "cancel_operator_unreachable",
+      "code": "cancel_health_emergency",
       "category": "CUSTOMER_CANCELLATION",
-      "description": "Unable to contact the operator",
-      "description_en": "Unable to contact the operator",
-      "description_tr": "Operatörle iletişim kuramadım",
-      "description_de": "Der Operator ist nicht erreichbar",
-      "description_ru": "Не удалось связаться с оператором",
+      "description": "Health / emergency reasons",
+      "description_en": "Health / emergency reasons",
+      "description_tr": "Sağlık / acil durum",
+      "description_de": "Gesundheitliche Gründe / Notfall",
+      "description_ru": "Здоровье / экстренная ситуация",
       "order": 6,
       "is_active": true,
       "created_at": "2026-11-21T00:00:00Z"
@@ -243,13 +243,13 @@
     "model": "core.reason",
     "pk": 16,
     "fields": {
-      "code": "cancel_driver_not_assigned",
+      "code": "cancel_not_needed",
       "category": "CUSTOMER_CANCELLATION",
-      "description": "Driver not yet assigned",
-      "description_en": "Driver not yet assigned",
-      "description_tr": "Sürücü henüz atanmadı",
-      "description_de": "Noch kein Fahrer zugewiesen",
-      "description_ru": "Водитель ещё не назначен",
+      "description": "No longer need the transfer",
+      "description_en": "No longer need the transfer",
+      "description_tr": "Transfere artık ihtiyacım yok",
+      "description_de": "Ich benötige den Transfer nicht mehr",
+      "description_ru": "Трансфер больше не нужен",
       "order": 7,
       "is_active": true,
       "created_at": "2026-11-21T00:00:00Z"
@@ -259,13 +259,13 @@
     "model": "core.reason",
     "pk": 17,
     "fields": {
-      "code": "cancel_health_emergency",
+      "code": "cancel_better_alternative",
       "category": "CUSTOMER_CANCELLATION",
-      "description": "Health / emergency reasons",
-      "description_en": "Health / emergency reasons",
-      "description_tr": "Sağlık / acil durum",
-      "description_de": "Gesundheitliche Gründe / Notfall",
-      "description_ru": "Здоровье / экстренная ситуация",
+      "description": "Found a more suitable alternative",
+      "description_en": "Found a more suitable alternative",
+      "description_tr": "Daha uygun bir alternatif buldum",
+      "description_de": "Ich habe eine passendere Alternative gefunden",
+      "description_ru": "Нашёл более подходящий вариант",
       "order": 8,
       "is_active": true,
       "created_at": "2026-11-21T00:00:00Z"
@@ -274,38 +274,6 @@
   {
     "model": "core.reason",
     "pk": 18,
-    "fields": {
-      "code": "cancel_not_needed",
-      "category": "CUSTOMER_CANCELLATION",
-      "description": "No longer need the transfer",
-      "description_en": "No longer need the transfer",
-      "description_tr": "Transfere artık ihtiyacım yok",
-      "description_de": "Ich benötige den Transfer nicht mehr",
-      "description_ru": "Трансфер больше не нужен",
-      "order": 9,
-      "is_active": true,
-      "created_at": "2026-11-21T00:00:00Z"
-    }
-  },
-  {
-    "model": "core.reason",
-    "pk": 19,
-    "fields": {
-      "code": "cancel_better_alternative",
-      "category": "CUSTOMER_CANCELLATION",
-      "description": "Found a more suitable alternative",
-      "description_en": "Found a more suitable alternative",
-      "description_tr": "Daha uygun bir alternatif buldum",
-      "description_de": "Ich habe eine passendere Alternative gefunden",
-      "description_ru": "Нашёл более подходящий вариант",
-      "order": 10,
-      "is_active": true,
-      "created_at": "2026-11-21T00:00:00Z"
-    }
-  },
-  {
-    "model": "core.reason",
-    "pk": 20,
     "fields": {
       "code": "operator_no_driver",
       "category": "OPERATOR_CANCELLATION",
@@ -321,7 +289,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 21,
+    "pk": 19,
     "fields": {
       "code": "operator_no_vehicle",
       "category": "OPERATOR_CANCELLATION",
@@ -337,7 +305,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 22,
+    "pk": 20,
     "fields": {
       "code": "operator_customer_request",
       "category": "OPERATOR_CANCELLATION",
@@ -353,7 +321,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 23,
+    "pk": 21,
     "fields": {
       "code": "operator_customer_unreachable",
       "category": "OPERATOR_CANCELLATION",
@@ -369,7 +337,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 24,
+    "pk": 22,
     "fields": {
       "code": "operator_customer_info_invalid",
       "category": "OPERATOR_CANCELLATION",
@@ -385,7 +353,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 25,
+    "pk": 23,
     "fields": {
       "code": "operator_time_changed",
       "category": "OPERATOR_CANCELLATION",
@@ -401,7 +369,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 26,
+    "pk": 24,
     "fields": {
       "code": "operator_over_capacity",
       "category": "OPERATOR_CANCELLATION",
@@ -417,7 +385,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 27,
+    "pk": 25,
     "fields": {
       "code": "operator_wrong_price",
       "category": "OPERATOR_CANCELLATION",
@@ -433,7 +401,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 28,
+    "pk": 26,
     "fields": {
       "code": "operator_duplicate",
       "category": "OPERATOR_CANCELLATION",
@@ -449,7 +417,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 29,
+    "pk": 27,
     "fields": {
       "code": "operator_suspicious",
       "category": "OPERATOR_CANCELLATION",
@@ -465,7 +433,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 30,
+    "pk": 28,
     "fields": {
       "code": "operator_safety",
       "category": "OPERATOR_CANCELLATION",
@@ -481,7 +449,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 31,
+    "pk": 29,
     "fields": {
       "code": "operator_traffic",
       "category": "OPERATOR_CANCELLATION",
@@ -497,7 +465,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 32,
+    "pk": 30,
     "fields": {
       "code": "operator_weather",
       "category": "OPERATOR_CANCELLATION",
@@ -513,7 +481,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 33,
+    "pk": 31,
     "fields": {
       "code": "driver_vehicle_breakdown",
       "category": "DRIVER_CANCELLATION",
@@ -529,7 +497,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 34,
+    "pk": 32,
     "fields": {
       "code": "driver_driver_unavailable",
       "category": "DRIVER_CANCELLATION",
@@ -545,7 +513,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 35,
+    "pk": 33,
     "fields": {
       "code": "driver_vehicle_unavailable",
       "category": "DRIVER_CANCELLATION",
@@ -561,7 +529,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 36,
+    "pk": 34,
     "fields": {
       "code": "driver_time_changed",
       "category": "DRIVER_CANCELLATION",
@@ -577,7 +545,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 37,
+    "pk": 35,
     "fields": {
       "code": "driver_customer_unreachable",
       "category": "DRIVER_CANCELLATION",
@@ -593,7 +561,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 38,
+    "pk": 36,
     "fields": {
       "code": "driver_customer_no_show",
       "category": "DRIVER_CANCELLATION",
@@ -609,7 +577,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 39,
+    "pk": 37,
     "fields": {
       "code": "driver_customer_info_invalid",
       "category": "DRIVER_CANCELLATION",
@@ -625,7 +593,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 40,
+    "pk": 38,
     "fields": {
       "code": "driver_special_requests_unmet",
       "category": "DRIVER_CANCELLATION",
@@ -641,7 +609,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 41,
+    "pk": 39,
     "fields": {
       "code": "driver_traffic",
       "category": "DRIVER_CANCELLATION",
@@ -657,7 +625,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 42,
+    "pk": 40,
     "fields": {
       "code": "driver_wrong_price",
       "category": "DRIVER_CANCELLATION",
@@ -673,7 +641,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 43,
+    "pk": 41,
     "fields": {
       "code": "driver_over_capacity",
       "category": "DRIVER_CANCELLATION",
@@ -689,7 +657,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 44,
+    "pk": 42,
     "fields": {
       "code": "driver_safety",
       "category": "DRIVER_CANCELLATION",
@@ -705,7 +673,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 45,
+    "pk": 43,
     "fields": {
       "code": "driver_schedule_conflict",
       "category": "DRIVER_CANCELLATION",
@@ -721,7 +689,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 46,
+    "pk": 44,
     "fields": {
       "code": "driver_weather",
       "category": "DRIVER_CANCELLATION",
@@ -737,7 +705,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 47,
+    "pk": 45,
     "fields": {
       "code": "driver_health_emergency",
       "category": "DRIVER_CANCELLATION",
@@ -753,7 +721,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 48,
+    "pk": 46,
     "fields": {
       "code": "driver_reject_data_missing",
       "category": "DRIVER_DISAPPROVAL",
@@ -769,7 +737,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 49,
+    "pk": 47,
     "fields": {
       "code": "driver_reject_data_invalid",
       "category": "DRIVER_DISAPPROVAL",
@@ -785,7 +753,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 50,
+    "pk": 48,
     "fields": {
       "code": "driver_reject_data_incomplete",
       "category": "DRIVER_DISAPPROVAL",
@@ -801,7 +769,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 51,
+    "pk": 49,
     "fields": {
       "code": "driver_reject_data_outdated",
       "category": "DRIVER_DISAPPROVAL",
@@ -817,7 +785,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 52,
+    "pk": 50,
     "fields": {
       "code": "driver_reject_image_quality",
       "category": "DRIVER_DISAPPROVAL",
@@ -833,7 +801,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 53,
+    "pk": 51,
     "fields": {
       "code": "driver_reject_document_wrong_content",
       "category": "DRIVER_DISAPPROVAL",
@@ -849,7 +817,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 54,
+    "pk": 52,
     "fields": {
       "code": "driver_reject_document_unreadable",
       "category": "DRIVER_DISAPPROVAL",
@@ -865,7 +833,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 55,
+    "pk": 53,
     "fields": {
       "code": "driver_reject_document_incomplete",
       "category": "DRIVER_DISAPPROVAL",
@@ -881,7 +849,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 56,
+    "pk": 54,
     "fields": {
       "code": "driver_reject_document_expired",
       "category": "DRIVER_DISAPPROVAL",
@@ -897,7 +865,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 57,
+    "pk": 55,
     "fields": {
       "code": "driver_reject_document_wrong_type",
       "category": "DRIVER_DISAPPROVAL",
@@ -913,7 +881,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 58,
+    "pk": 56,
     "fields": {
       "code": "driver_reject_date_invalid",
       "category": "DRIVER_DISAPPROVAL",
@@ -929,7 +897,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 59,
+    "pk": 57,
     "fields": {
       "code": "driver_reject_number_out_of_range",
       "category": "DRIVER_DISAPPROVAL",
@@ -945,7 +913,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 60,
+    "pk": 58,
     "fields": {
       "code": "driver_reject_length_invalid",
       "category": "DRIVER_DISAPPROVAL",
@@ -961,7 +929,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 61,
+    "pk": 59,
     "fields": {
       "code": "driver_reject_address_unverified",
       "category": "DRIVER_DISAPPROVAL",
@@ -977,7 +945,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 62,
+    "pk": 60,
     "fields": {
       "code": "vehicle_reject_data_missing",
       "category": "VEHICLE_DISAPPROVAL",
@@ -993,7 +961,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 63,
+    "pk": 61,
     "fields": {
       "code": "vehicle_reject_data_invalid",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1009,7 +977,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 64,
+    "pk": 62,
     "fields": {
       "code": "vehicle_reject_data_incomplete",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1025,7 +993,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 65,
+    "pk": 63,
     "fields": {
       "code": "vehicle_reject_data_outdated",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1041,7 +1009,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 66,
+    "pk": 64,
     "fields": {
       "code": "vehicle_reject_image_quality",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1057,7 +1025,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 67,
+    "pk": 65,
     "fields": {
       "code": "vehicle_reject_document_wrong_content",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1073,7 +1041,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 68,
+    "pk": 66,
     "fields": {
       "code": "vehicle_reject_document_unreadable",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1089,7 +1057,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 69,
+    "pk": 67,
     "fields": {
       "code": "vehicle_reject_document_incomplete",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1105,7 +1073,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 70,
+    "pk": 68,
     "fields": {
       "code": "vehicle_reject_document_expired",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1121,7 +1089,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 71,
+    "pk": 69,
     "fields": {
       "code": "vehicle_reject_document_wrong_type",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1137,7 +1105,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 72,
+    "pk": 70,
     "fields": {
       "code": "vehicle_reject_date_invalid",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1153,7 +1121,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 73,
+    "pk": 71,
     "fields": {
       "code": "vehicle_reject_number_out_of_range",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1169,7 +1137,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 74,
+    "pk": 72,
     "fields": {
       "code": "vehicle_reject_length_invalid",
       "category": "VEHICLE_DISAPPROVAL",
@@ -1185,7 +1153,7 @@
   },
   {
     "model": "core.reason",
-    "pk": 75,
+    "pk": 73,
     "fields": {
       "code": "vehicle_reject_address_unverified",
       "category": "VEHICLE_DISAPPROVAL",
