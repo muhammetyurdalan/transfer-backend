@@ -1,10 +1,13 @@
 import asyncio
+from asgiref.sync import sync_to_async as s2a
 from datetime import timedelta
 from decimal import Decimal
+from django.apps import apps
 from django.core.cache import cache
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from fcm_django.models import FCMDevice
+from importlib import import_module
 from json import dumps, loads
 from strawberry.channels.testing import GraphQLWebsocketCommunicator
 from strawberry.exceptions import StrawberryGraphQLError as Error
@@ -210,6 +213,20 @@ query($transferId: ID!) { messages(transferId: $transferId) { id message } }
 '''
 SEE_MESSAGES = '''
 mutation($transferId: ID!) { seeMessages(transferId: $transferId) { success } }
+'''
+SEE_MESSAGES_UP_TO = '''
+mutation($transferId: ID!, $upToMessageId: ID) {
+  seeMessages(transferId: $transferId, upToMessageId: $upToMessageId) { success }
+}
+'''
+DELIVER_MESSAGES = '''
+mutation($transferId: ID) { deliverMessages(transferId: $transferId) { success } }
+'''
+MESSAGE_STATUSES = '''
+query($transferId: ID!) { messages(transferId: $transferId) { id status } }
+'''
+DELETE_MESSAGE = '''
+mutation($id: ID!) { deleteMessage(id: $id) { id status isDeleted } }
 '''
 UPDATE_MESSAGE = '''
 mutation($data: UpdateMessage!) {
@@ -2884,6 +2901,180 @@ class MessageTests(GraphQLTestCase):
         )
 
 
+class MessageStatusTests(GraphQLTestCase):
+    """SENT -> DELIVERED -> SEEN (ticks)."""
+
+    async def send(self, user, message='Hi'):
+        data = {'transferId': str(self.transfer.id), 'message': message}
+        result = await self.execute(SEND_MESSAGE, {'data': data}, user)
+        return self.ok(result, 'sendMessage')['id']
+
+    async def deliver(self, user, transfer_id=None):
+        variables = {'transferId': transfer_id}
+        result = await self.execute(DELIVER_MESSAGES, variables, user)
+        self.assertTrue(self.ok(result, 'deliverMessages')['success'])
+
+    async def see(self, user, up_to=None):
+        variables = {
+            'transferId': str(self.transfer.id), 'upToMessageId': up_to
+        }
+        result = await self.execute(SEE_MESSAGES_UP_TO, variables, user)
+        self.assertTrue(self.ok(result, 'seeMessages')['success'])
+
+    async def status(self, pk):
+        return (await models.Message.objects.aget(pk=pk)).status
+
+    async def test_customer_message(self):
+        self.transfer = await self.assigned_transfer()
+        pk = await self.send(self.customer)
+        self.assertEqual(await self.status(pk), 'SENT')
+        # Neither the sender nor the driver nor users outside count
+        for user in (self.customer, self.driver, self.other_operator,
+                     self.other_customer):
+            await self.deliver(user)
+            self.assertEqual(await self.status(pk), 'SENT')
+        for user in (self.customer, self.driver):
+            await self.see(user)
+            self.assertEqual(await self.status(pk), 'SENT')
+        # One of ADMIN, STAFF, OPERATOR is enough
+        await self.deliver(self.staff, str(self.transfer.id))
+        self.assertEqual(await self.status(pk), 'DELIVERED')
+        await self.see(self.operator)
+        self.assertEqual(await self.status(pk), 'SEEN')
+        # Never backwards
+        await self.deliver(self.admin)
+        self.assertEqual(await self.status(pk), 'SEEN')
+
+    async def test_seen_without_delivery(self):
+        self.transfer = await self.assigned_transfer()
+        pk = await self.send(self.driver)
+        await self.see(self.admin)
+        self.assertEqual(await self.status(pk), 'SEEN')
+
+    async def test_dispatch_message_needs_the_customer(self):
+        self.transfer = await self.assigned_transfer()
+        for sender in (self.operator, self.admin):
+            pk = await self.send(sender)
+            for user in (self.admin, self.staff, self.operator, self.driver):
+                await self.deliver(user)
+                await self.see(user)
+            self.assertEqual(await self.status(pk), 'SENT')
+            await self.deliver(self.customer)
+            self.assertEqual(await self.status(pk), 'DELIVERED')
+            await self.see(self.customer)
+            self.assertEqual(await self.status(pk), 'SEEN')
+
+    async def test_staff_who_joined_later_counts(self):
+        self.transfer = await self.assigned_transfer()
+        pk = await self.send(self.customer)
+        admin = await User.objects.acreate(
+            email='admin3@example.com', role='ADMIN', first_name='New',
+            last_name='Admin'
+        )
+        await self.see(admin)
+        self.assertEqual(await self.status(pk), 'SEEN')
+
+    async def test_up_to_message(self):
+        self.transfer = await self.assigned_transfer()
+        first = await self.send(self.customer)
+        second = await self.send(self.customer)
+        await self.see(self.operator, first)
+        self.assertEqual(await self.status(first), 'SEEN')
+        self.assertEqual(await self.status(second), 'SENT')
+        seen = models.ThroughMessage.objects.filter(
+            receiver=self.operator, is_seen=True
+        ).values_list('message_id', flat=True)
+        self.assertEqual([str(pk) async for pk in seen], [first])
+
+    async def test_only_sender_sees_status(self):
+        self.transfer = await self.assigned_transfer()
+        pk = await self.send(self.customer)
+        variables = {'transferId': str(self.transfer.id)}
+        for user, status in (
+            (self.customer, 'SENT'), (self.operator, None),
+            (self.admin, None), (self.driver, None)
+        ):
+            result = await self.execute(MESSAGE_STATUSES, variables, user)
+            self.assertEqual(
+                self.ok(result, 'messages'), [{'id': pk, 'status': status}]
+            )
+        result = await self.execute(DELETE_MESSAGE, {'id': pk}, self.customer)
+        self.assertEqual(
+            self.ok(result, 'deleteMessage'),
+            {'id': pk, 'status': None, 'isDeleted': True}
+        )
+
+    async def test_edit_keeps_status(self):
+        self.transfer = await self.assigned_transfer()
+        pk = await self.send(self.customer)
+        messages = models.Message.objects
+        stale = await messages.aget(pk=pk)
+        await self.see(self.admin)
+        # The edit loads the message before it is seen and saves after
+        with patch(
+            'core.schemas.message.get_message_receiver_ids',
+            AsyncMock(return_value=[])
+        ), patch('core.schemas.message.manager') as manager:
+            manager.filter.return_value.afirst = AsyncMock(return_value=stale)
+            data = {'id': pk, 'message': 'Edited'}
+            result = await self.execute(
+                UPDATE_MESSAGE, {'data': data}, self.customer
+            )
+            self.ok(result, 'updateMessage')
+        message = await messages.aget(pk=pk)
+        self.assertEqual((message.message, message.status), ('Edited', 'SEEN'))
+
+    async def test_sender_gets_one_event_per_change(self):
+        self.transfer = await self.assigned_transfer()
+        pks = [await self.send(self.customer) for _ in range(2)]
+        with patch('core.utils.broadcast', AsyncMock()) as broadcast:
+            await self.deliver(self.admin)
+            await self.deliver(self.staff)
+            await self.see(self.operator)
+            await self.see(self.admin)
+        calls = broadcast.await_args_list
+        self.assertEqual(len(calls), 2)
+        for call, reader, status in zip(
+            calls, (self.admin, self.operator), ('DELIVERED', 'SEEN')
+        ):
+            self.assertEqual(
+                call.args, (reader.id, 'MESSAGE_STATUS', [self.customer.id])
+            )
+            self.assertEqual(call.kwargs, {
+                'transfer_id': str(self.transfer.id),
+                'message_ids': pks,
+                'message_status': status
+            })
+
+    async def test_backfill(self):
+        self.transfer = await self.assigned_transfer()
+        by_customer = await self.send(self.customer)
+        by_operator = await self.send(self.operator)
+        through = models.ThroughMessage.objects
+        backfill = import_module(
+            'core.migrations.0021_backfill_message_status'
+        ).backfill
+        # Seen by those who do not count
+        await through.filter(
+            message_id=by_customer, receiver=self.driver
+        ).aupdate(is_seen=True)
+        await through.filter(
+            message_id=by_operator, receiver=self.admin
+        ).aupdate(is_seen=True)
+        await s2a(backfill)(apps, None)
+        self.assertEqual(await self.status(by_customer), 'SENT')
+        self.assertEqual(await self.status(by_operator), 'SENT')
+        await through.filter(
+            message_id=by_customer, receiver=self.staff
+        ).aupdate(is_seen=True)
+        await through.filter(
+            message_id=by_operator, receiver=self.customer
+        ).aupdate(is_seen=True)
+        await s2a(backfill)(apps, None)
+        self.assertEqual(await self.status(by_customer), 'SEEN')
+        self.assertEqual(await self.status(by_operator), 'SEEN')
+
+
 UPDATE_FCM_TOKEN = '''
 mutation($data: UpdateFcmToken!) { updateFcmToken(data: $data) { success } }
 '''
@@ -2930,3 +3121,32 @@ class SubscriptionTests(GraphQLTestCase):
         actions = [event['action'] for event in events]
         self.assertEqual(actions, ['NOTIFICATION', 'TRANSFER_ACCEPTED'])
         self.assertEqual(events[1]['transferId'], str(transfer.id))
+
+    async def test_sender_receives_message_status_event(self):
+        transfer = await self.assigned_transfer()
+        data = {'transferId': str(transfer.id), 'message': 'Hi'}
+        result = await self.execute(SEND_MESSAGE, {'data': data}, self.customer)
+        pk = self.ok(result, 'sendMessage')['id']
+        communicator = GraphQLWebsocketCommunicator(
+            application=application, path='/graphql',
+            connection_params={
+                'authorization': utils.create_token(self.customer.email)
+            }
+        )
+        await communicator.gql_init()
+        try:
+            stream = communicator.subscribe(
+                'subscription { subscribe '
+                '{ action transferId messageIds messageStatus } }'
+            )
+            task = asyncio.create_task(anext(stream))
+            await asyncio.sleep(0.1)
+            variables = {'transferId': str(transfer.id)}
+            await self.execute(SEE_MESSAGES, variables, self.operator)
+            event = (await asyncio.wait_for(task, 5)).data['subscribe']
+        finally:
+            await communicator.disconnect()
+        self.assertEqual(event, {
+            'action': 'MESSAGE_STATUS', 'transferId': str(transfer.id),
+            'messageIds': [pk], 'messageStatus': 'SEEN'
+        })

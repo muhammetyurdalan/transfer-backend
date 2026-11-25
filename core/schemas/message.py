@@ -1,6 +1,8 @@
 from datetime import timedelta
+from asgiref.sync import sync_to_async as s2a
 from django.conf import settings
-from django.db.models import Q
+from django.db import transaction as db_transaction
+from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.translation import activate, gettext
 from json import dumps
@@ -14,6 +16,7 @@ from core.decorators import permission_required
 
 User = utils.User
 manager = models.Message.objects
+MessageStatus = enums.MessageStatus
 Status = enums.TransferStatus
 MESSAGING_STATUSES = [Status.ACCEPTED, Status.STARTED]
 
@@ -97,6 +100,61 @@ def get_message_payload(message):
     }
 
 
+PREVIOUS_STATUSES = {
+    MessageStatus.DELIVERED: [MessageStatus.SENT],
+    MessageStatus.SEEN: [MessageStatus.SENT, MessageStatus.DELIVERED],
+}
+
+
+def get_status_messages(user):
+    '''Messages of others that advance when user receives/sees them.'''
+    dispatch = Q(sender__role__in=utils.DISPATCH_ROLES)
+    by_customer = Q(sender=F('transfer__customer'))
+    filters = Q(transfer__customer=user) & dispatch
+    if user.role in utils.DISPATCH_ROLES:
+        filters |= ~dispatch | by_customer
+    messages = manager.filter(
+        filters, transfer__in=utils.get_transfers(user).values('pk')
+    )
+    if user.role not in utils.STAFF_ROLES:
+        messages = messages.filter(receivers=user)
+    return messages.exclude(sender=user)
+
+
+@s2a
+def update_message_status(messages, status):
+    """
+    Returns (id, sender_id, transfer_id) of the messages it really changed:
+    concurrent requests wait for the row locks and find nothing to change.
+    """
+    with db_transaction.atomic():
+        pending = manager.select_for_update().filter(
+            pk__in=messages.values('pk'),
+            status__in=PREVIOUS_STATUSES[status]
+        )
+        pending = pending.order_by('pk')
+        rows = list(pending.values_list('pk', 'sender_id', 'transfer_id'))
+        if rows:
+            ids = [row[0] for row in rows]
+            manager.filter(pk__in=ids).update(status=status)
+    return rows
+
+
+async def advance_messages(user, messages, status):
+    changed = {}
+    for pk, *key in await update_message_status(messages, status):
+        changed.setdefault(tuple(key), []).append(str(pk))
+    for (sender_id, transfer_id), message_ids in changed.items():
+        await utils.broadcast(
+            user.id,
+            enums.Action.MESSAGE_STATUS,
+            [sender_id],
+            transfer_id=str(transfer_id),
+            message_ids=message_ids,
+            message_status=status
+        )
+
+
 @sb.type
 class Mutation:
     @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
@@ -149,7 +207,7 @@ class Mutation:
         assert data.message, dumps({'code': 'ERR017'})
         message.message = data.message
         message.is_edited = True
-        await message.asave()
+        await message.asave(update_fields=['message', 'is_edited'])
         receiver_ids = await get_message_receiver_ids(message)
         args = (user.id, enums.Action.UPDATE_MESSAGE, receiver_ids)
         await utils.broadcast(*args, **get_message_payload(message))
@@ -166,7 +224,9 @@ class Mutation:
         message.deleted_time = timezone.now()
         message.deleted_by = user
         message.file = ''
-        await message.asave()
+        await message.asave(update_fields=[
+            'is_deleted', 'deleted_time', 'deleted_by', 'file'
+        ])
         receiver_ids = await get_message_receiver_ids(message)
         args = (user.id, enums.Action.DELETE_MESSAGE, receiver_ids)
         kwargs = {
@@ -180,13 +240,40 @@ class Mutation:
     @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
     async def see_messages(
         root, info: Info,
-        transfer_id: sb.ID
+        transfer_id: sb.ID,
+        up_to_message_id: Optional[sb.ID] = None
     ) -> outputs.SuccessResponse:
         user = info.context['user']
         transfer = await models.Transfer.objects.filter(pk=transfer_id).afirst()
         assert transfer, dumps({'code': 'ERR013'})
         await utils.check_messaging_access(user, transfer)
-        through_messages = user.through_messages.filter(transfer=transfer)
+        through_messages = user.through_messages.filter(
+            transfer=transfer, is_seen=False
+        )
+        messages = get_status_messages(user).filter(transfer=transfer)
+        if up_to_message_id:
+            through_messages = through_messages.filter(
+                message_id__lte=up_to_message_id
+            )
+            messages = messages.filter(pk__lte=up_to_message_id)
         await through_messages.aupdate(is_seen=True)
+        await advance_messages(user, messages, MessageStatus.SEEN)
         await see_message_notifications(user.id, transfer)
+        return outputs.SuccessResponse(success=True)
+
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
+    async def deliver_messages(
+        root, info: Info,
+        transfer_id: Optional[sb.ID] = None
+    ) -> outputs.SuccessResponse:
+        """
+        The client calls it when it gets a MESSAGE event (transfer_id) and when
+        it connects (all transfers). Calling it again has no effect.
+        """
+        user = info.context['user']
+        messages = get_status_messages(user)
+        if transfer_id:
+            messages = messages.filter(transfer_id=transfer_id)
+        await advance_messages(user, messages, MessageStatus.DELIVERED)
         return outputs.SuccessResponse(success=True)
