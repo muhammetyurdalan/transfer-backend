@@ -4,6 +4,7 @@ from datetime import timedelta
 from decimal import Decimal
 from django.apps import apps
 from django.core.cache import cache
+from django.db.backends.utils import CursorWrapper
 from django.test import TestCase, override_settings
 from django.utils import timezone
 from fcm_django.models import FCMDevice
@@ -224,6 +225,18 @@ mutation($transferId: ID) { deliverMessages(transferId: $transferId) { success }
 '''
 MESSAGE_STATUSES = '''
 query($transferId: ID!) { messages(transferId: $transferId) { id status } }
+'''
+REACT_MESSAGE = '''
+mutation($id: ID!, $emoji: ReactionEmoji) {
+  reactMessage(id: $id, emoji: $emoji) { id reactions { emoji userId } }
+}
+'''
+MESSAGE_REACTIONS = '''
+query($transferId: ID!) {
+  messages(transferId: $transferId) {
+    id reactions { id emoji userId user { id name } }
+  }
+}
 '''
 DELETE_MESSAGE = '''
 mutation($id: ID!) { deleteMessage(id: $id) { id status isDeleted } }
@@ -3073,6 +3086,140 @@ class MessageStatusTests(GraphQLTestCase):
         await s2a(backfill)(apps, None)
         self.assertEqual(await self.status(by_customer), 'SEEN')
         self.assertEqual(await self.status(by_operator), 'SEEN')
+
+
+class MessageReactionTests(GraphQLTestCase):
+    async def send(self, user):
+        data = {'transferId': str(self.transfer.id), 'message': 'Hi'}
+        result = await self.execute(SEND_MESSAGE, {'data': data}, user)
+        return self.ok(result, 'sendMessage')['id']
+
+    async def react(self, user, pk, emoji=None):
+        variables = {'id': pk, 'emoji': emoji}
+        return await self.execute(REACT_MESSAGE, variables, user)
+
+    async def reactions(self, user):
+        variables = {'transferId': str(self.transfer.id)}
+        result = await self.execute(MESSAGE_REACTIONS, variables, user)
+        return [
+            [(r['emoji'], r['userId'], r['user']['id']) for r in m['reactions']]
+            for m in self.ok(result, 'messages')
+        ]
+
+    async def test_add_replace_remove(self):
+        self.transfer = await self.assigned_transfer()
+        pk = await self.send(self.customer)
+        customer, operator = str(self.customer.id), str(self.operator.id)
+        result = await self.react(self.operator, pk, 'LIKE')
+        self.assertEqual(
+            self.ok(result, 'reactMessage'),
+            {'id': pk, 'reactions': [{'emoji': 'LIKE', 'userId': operator}]}
+        )
+        # Own message
+        self.ok(await self.react(self.customer, pk, 'PRAY'), 'reactMessage')
+        # One per user: replaced
+        self.ok(await self.react(self.operator, pk, 'LOVE'), 'reactMessage')
+        for user in (self.customer, self.driver, self.admin):
+            self.assertEqual(await self.reactions(user), [[
+                ('LOVE', operator, operator), ('PRAY', customer, customer)
+            ]])
+        for _ in range(2):
+            result = await self.react(self.operator, pk)
+            self.assertEqual(
+                self.ok(result, 'reactMessage')['reactions'],
+                [{'emoji': 'PRAY', 'userId': customer}]
+            )
+        result = await self.react(self.operator, pk, 'DANCE')
+        self.assertIn('errors', result)
+
+    async def test_access(self):
+        self.transfer = await self.assigned_transfer()
+        pk = await self.send(self.customer)
+        for user in (self.other_customer, self.other_driver,
+                     self.other_operator):
+            result = await self.react(user, pk, 'LIKE')
+            self.assertEqual(self.error_code(result), 'ERR001')
+        result = await self.react(self.customer, '0', 'LIKE')
+        self.assertEqual(self.error_code(result), 'ERR001')
+        # A driver who joined later does not see the message
+        await models.TransferDriver.objects.acreate(
+            transfer=self.transfer, driver=self.other_driver
+        )
+        result = await self.react(self.other_driver, pk, 'LIKE')
+        self.assertEqual(self.error_code(result), 'ERR001')
+        transfers = models.Transfer.objects.filter(pk=self.transfer.pk)
+        await transfers.aupdate(status='COMPLETED')
+        result = await self.react(self.operator, pk, 'LIKE')
+        self.assertEqual(self.error_code(result), 'ERR019')
+
+    async def test_deleted_message(self):
+        self.transfer = await self.assigned_transfer()
+        pk = await self.send(self.customer)
+        self.ok(await self.react(self.operator, pk, 'SAD'), 'reactMessage')
+        result = await self.execute(DELETE_MESSAGE, {'id': pk}, self.customer)
+        self.ok(result, 'deleteMessage')
+        self.assertEqual(await self.reactions(self.customer), [[]])
+        result = await self.react(self.operator, pk, 'LIKE')
+        self.assertEqual(self.error_code(result), 'ERR021')
+
+    async def test_event_without_notification(self):
+        self.transfer = await self.assigned_transfer()
+        pk = await self.send(self.customer)
+        new_admin = await User.objects.acreate(
+            email='admin4@example.com', role='ADMIN', first_name='New',
+            last_name='Admin'
+        )
+        # Joined later: cannot see the message, gets no event
+        await models.TransferDriver.objects.acreate(
+            transfer=self.transfer, driver=self.other_driver
+        )
+        before = await models.Notification.objects.acount()
+        with patch('core.utils.broadcast', AsyncMock()) as broadcast:
+            await self.react(self.operator, pk, 'WOW')
+            await self.react(self.operator, pk)
+            # Nothing to remove, no event
+            await self.react(self.operator, pk)
+        self.assertEqual(await models.Notification.objects.acount(), before)
+        calls = broadcast.await_args_list
+        self.assertEqual(len(calls), 2)
+        for call, emoji in zip(calls, ('WOW', '')):
+            sender_id, action, receiver_ids = call.args
+            self.assertEqual(sender_id, self.operator.id)
+            self.assertEqual(action, 'MESSAGE_REACTION')
+            self.assertEqual(set(receiver_ids), {
+                self.customer.id, self.driver.id, self.admin.id,
+                self.staff.id, new_admin.id
+            })
+            self.assertEqual(call.kwargs, {
+                'transfer_id': str(self.transfer.id), 'message_id': pk,
+                'message': emoji
+            })
+
+    async def test_list_query_count(self):
+        self.transfer = await self.assigned_transfer()
+
+        async def count():
+            # The request may use another connection than the test
+            queries = []
+            execute = CursorWrapper.execute
+
+            def capture(cursor, sql, params=None):
+                queries.append(sql)
+                return execute(cursor, sql, params)
+
+            with patch.object(CursorWrapper, 'execute', capture):
+                await self.reactions(self.operator)
+            return len(queries)
+
+        pk = await self.send(self.customer)
+        await self.react(self.operator, pk, 'LIKE')
+        one = await count()
+        for _ in range(4):
+            pk = await self.send(self.customer)
+            await self.react(self.operator, pk, 'LIKE')
+            await self.react(self.admin, pk, 'LOVE')
+        self.assertGreater(one, 1)
+        self.assertEqual(await count(), one)
 
 
 UPDATE_FCM_TOKEN = '''
