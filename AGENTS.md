@@ -181,11 +181,11 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR059**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR060**.
 
 | Aralık | Alan |
 |---|---|
-| ERR001–ERR004, ERR009–ERR012, ERR043–ERR045 | Auth, kullanıcı (ERR043: telefon zorunlu, ERR044: davet bulunamadı/kullanılmış, ERR045: sosyal giriş token'ı geçersiz) |
+| ERR001–ERR004, ERR009–ERR012, ERR043–ERR045, ERR059 | Auth, kullanıcı (ERR010: kullanıcı yok/pasif, ERR012: yeni şifre kurallara uymuyor, ERR059: `signIn`'de şifre yanlış, ERR043: telefon zorunlu, ERR044: davet bulunamadı/kullanılmış, ERR045: sosyal giriş token'ı geçersiz) |
 | ERR013–ERR016, ERR035, ERR048–ERR049 | Transfer (ERR035: district bulunamadı, ERR048: sürücü sayısı `vehicle_count`'a ulaştı, ERR049: sürücü ataması bulunamadı) |
 | ERR017–ERR024 | Mesajlaşma |
 | ERR025–ERR029, ERR046–ERR047 | Araç kategorisi, araç (ERR046: araç sayısı kategorinin gereksiniminden az, ERR047: state çoklu araca izin vermiyor) |

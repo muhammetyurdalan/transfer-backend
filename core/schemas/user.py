@@ -226,7 +226,7 @@ class Mutation:
         user = await manager.filter(email=email, is_active=True).afirst()
         assert user, dumps({'code': 'ERR010'})
         password_valid = await s2a(user.check_password)(data.password)
-        assert password_valid, dumps({'code': 'ERR010'})
+        assert password_valid, dumps({'code': 'ERR059'})
         token = utils.create_token(user.email)
         append_user(info.context, user)
         return outputs.SignInResponse(user=user, token=token)
