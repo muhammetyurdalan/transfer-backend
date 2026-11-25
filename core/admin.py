@@ -210,7 +210,9 @@ class ThroughMessageInline(admin.TabularInline):
 
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
-    list_display = ['id', 'transfer_id', 'sender_id', 'time', 'is_deleted']
-    list_filter = ['is_deleted']
+    list_display = [
+        'id', 'transfer_id', 'sender_id', 'time', 'status', 'is_deleted'
+    ]
+    list_filter = ['status', 'is_deleted']
     raw_id_fields = ['transfer', 'sender', 'parent', 'deleted_by']
     inlines = [ThroughMessageInline]

@@ -582,6 +582,11 @@ class Message(models.Model):
     message = models.TextField(blank=True)
     location = models.TextField(blank=True)
     file = models.FileField(upload_to=upload_to, blank=True)
+    status = models.CharField(
+        max_length=10,
+        choices=enums.MessageStatus.choices,
+        default=enums.MessageStatus.SENT
+    )
     is_edited = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False)
     deleted_time = models.DateTimeField(blank=True, null=True)
@@ -594,6 +599,13 @@ class Message(models.Model):
 
     class Meta:
         ordering = ['time', 'id']
+        indexes = [
+            models.Index(
+                fields=['transfer'],
+                name='undelivered_message_idx',
+                condition=models.Q(status=enums.MessageStatus.SENT)
+            )
+        ]
 
     def __str__(self):
         return f'transfer_id: {self.transfer_id}, id: {self.id}'

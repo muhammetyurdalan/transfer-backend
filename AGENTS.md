@@ -158,6 +158,12 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - Mesajlar `Transfer`'e bağlı. Katılımcılar: `customer`, `operator` (atamayı yapan), transferin bütün iç sürücüleri (`utils.get_driver_ids`, dış sürücülerin hesabı yok) ve **tüm aktif ADMIN/STAFF kullanıcıları** (her transferin mesajlaşmasına dahil). Alıcılar gönderen dışındaki katılımcılar (`utils.get_messaging_receiver_ids`), yani ADMIN/STAFF her mesajın bildirimini ve WebSocket olayını alır.
 - Sadece `ACCEPTED`/`STARTED` iken açık (`ERR019`). Gönderebilen roller: CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF. ADMIN/STAFF hepsini okur. Sonradan eklenen ADMIN/STAFF eski mesajların alıcısı olmaz ama hepsini okuyabilir.
 - Reply (`parentId`), dosya (2MB, `ERR024`) ve konum eki var. Düzenleme 1 saat içinde (`is_edited` true olur), silme soft delete. Her mesajda alıcılara `MESSAGE` bildirimi ve WebSocket olayı.
+- **Tikler** (`Message.status`, `MessageStatus`: `SENT` tek gri, `DELIVERED` çift gri, `SEEN` çift mavi): sadece ileri gider, kayıtlıdır (anlık rolden hesaplanmaz). Sadece gönderene döner, diğerlerine ve silinmiş mesajda `null`.
+  - **Kim ilerletir** (`get_status_messages`): müşterinin ve sürücünün mesajını ADMIN, STAFF veya transferin OPERATOR'ünden **herhangi biri** (sonradan eklenen ADMIN/STAFF dahil); ADMIN/STAFF/OPERATOR'ün mesajını **transferin müşterisi**. Sürücünün ve gönderenin kendi okuması sayılmaz.
+  - `deliverMessages(transferId?)`: istemci `MESSAGE` olayını alınca (o transfer) ve bağlanınca (hepsi) çağırır, tekrar çağrılması etkisizdir. `seeMessages(transferId, upToMessageId?)`: eskisi gibi `is_seen` + bildirimler, ayrıca `SEEN`. `upToMessageId` verilirse sonraki mesajlara dokunmaz (bildirimler yine görüldü olur).
+  - Değişiklik satır kilidiyle yapılır (`update_message_status`), olayı sadece gerçekten değiştiren istek yayınlar: `MESSAGE_STATUS`, sadece gönderene, `transferId` + `messageIds` + `messageStatus`.
+  - `updateMessage`/`deleteMessage` `update_fields` ile kaydeder, eski `status`'ü geri yazmaz.
+  - Migration `0021` eski mesajlardan okunmuş olanları `SEEN` yapar, diğerleri `SENT`.
 
 ### 4.5 Bildirim ve push
 - `utils.create_notifications` DB + WebSocket (`NOTIFICATION`) + FCM push (`FCM_ENABLED`, yani `FIREBASE_CREDENTIALS` doluysa, `tasks.send_push`).
@@ -170,7 +176,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - `check_transfers_expiring`: `pickup_time`'ı geçmiş **sadece `PENDING`** (ödenmemiş) transferler `EXPIRED` olur, ödeme linki `/expirePaymentLink` ile kapatılır. Koşullu update ile yapılır, aynı anda gelen ödeme kazanır. `ACCEPTED`/`STARTED` transferlere dokunulmaz (kullanıcı kararı, ödenmiş transfer otomatik expire/iade edilmez). Bildirim gönderilmez.
 
 ### 4.6 WebSocket olayları (`subscribe`, `SubscriptionResponse`)
-`USER_UPDATED`, `USER_DEACTIVATED`, `NOTIFICATION`, `MESSAGE`, `UPDATE_MESSAGE`, `DELETE_MESSAGE`, `PAYMENT_SUCCESS`, `PAYMENT_FAILED`, `TIP_PAYMENT_SUCCESS`, `TIP_PAYMENT_FAILED`, `REFUND` (sadece bildirim), `TRANSFER_PAID`, `TRANSFER_ASSIGNED`, `TRANSFER_STATUS_UPDATED`, `TRANSFER_CANCELLED`. Transfer olaylarında `transferId` dolu.
+`USER_UPDATED`, `USER_DEACTIVATED`, `NOTIFICATION`, `MESSAGE`, `UPDATE_MESSAGE`, `DELETE_MESSAGE`, `MESSAGE_STATUS` (§4.4), `PAYMENT_SUCCESS`, `PAYMENT_FAILED`, `TIP_PAYMENT_SUCCESS`, `TIP_PAYMENT_FAILED`, `REFUND` (sadece bildirim), `TRANSFER_PAID`, `TRANSFER_ASSIGNED`, `TRANSFER_STATUS_UPDATED`, `TRANSFER_CANCELLED`. Transfer olaylarında `transferId` dolu.
 
 ## 5. Hata kodları
 

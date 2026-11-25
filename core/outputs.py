@@ -59,6 +59,8 @@ class SubscriptionResponse:
     parent_id: Optional[sb.ID] = None
     location: Optional[str] = None
     file: Optional[str] = None
+    message_ids: Optional[List[sb.ID]] = None
+    message_status: Optional[enums.MessageStatus] = None
 
 
 @sb.type
@@ -654,10 +656,18 @@ def mask_deleted(root, info: Info) -> Optional[str]:
     return value
 
 
+def get_message_status(root, info: Info) -> Optional[enums.MessageStatus]:
+    '''Only the sender sees it, None for the others and deleted messages.'''
+    user = get_user(info.context)
+    if root.is_deleted or not user or user.id != root.sender_id:
+        return None
+    return enums.MessageStatus(root.status)
+
+
 @sbd.type(
     models.Message,
     exclude=['transfer', 'sender', 'receivers', 'deleted_by', 'parent',
-             'replies', 'through_messages']
+             'replies', 'through_messages', 'status']
 )
 class ParentMessage:
     sender_id: sb.ID
@@ -685,6 +695,9 @@ class Message:
     receivers: Optional[List[User]]
     parent: Optional[ParentMessage] = sbd.field(select_related=['parent'])
     is_deleted: Optional[bool]
+    status: Optional[enums.MessageStatus] = sbd.field(
+        resolver=get_message_status, only=['status', 'sender_id', 'is_deleted']
+    )
     message: Optional[str] = sbd.field(
         resolver=mask_deleted, only=['message', 'is_deleted']
     )
