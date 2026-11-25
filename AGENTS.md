@@ -151,7 +151,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
   - `cancellationReasonText` ("Diğer"): trim, 3–200 karakter (`ERR030`), yazıldığı dilde saklanır.
   - Çıktı: `Transfer.cancellationReason` (`Reason`, açıklama kullanıcının dilinde), `cancellationReasonId`, `cancellationReasonText`. Sebep metni düzenlenirse eski iptallerde de değişir (anlam değişecekse yeni sebep eklenmeli).
 - `TransferFilter`: `cancellationReasonId`, `cancellationReasonCode: [String!]` (kodlardan biri), `hasCancellationReasonText`.
-- Başlangıç verisi `core/fixtures/reasons.json`: 75 kayıt, 6 kategori, en/tr/de/ru, kategori içi `order`, kodlar kategori önekiyle (`withdraw_`, `cancel_`, `operator_`, `driver_`, `driver_reject_`, `vehicle_reject_`). `manage.py loaddata reasons`; pk'lar 1–75, aynı pk'lı kayıtların üstüne yazar.
+- Başlangıç verisi `core/fixtures/reasons.json`: 73 kayıt, 6 kategori, en/tr/de/ru, kategori içi `order`, kodlar kategori önekiyle (`withdraw_`, `cancel_`, `operator_`, `driver_`, `driver_reject_`, `vehicle_reject_`). `manage.py loaddata reasons`; pk'lar 1–73, aynı pk'lı kayıtların üstüne yazar. pk'lar kaydırıldıysa eski sürümün üstüne yüklenemez (`code` benzersiz), önce eski sebepler silinmeli (transferde kullanılanlar `PROTECT`).
 - `transfer`/`transfers` sorguları ve `cancelTransfer` sonucu kullanıcının dilini aktif eder (`cancellationReason.description`, `vehicleCategory.name`). `notify_users` alıcıların dilini aktif ettiği için mutation'larda `activate(user.language)` bildirimden **sonra** çağrılmalı.
 
 ### 4.4 Mesajlaşma (`schemas/message.py`)
