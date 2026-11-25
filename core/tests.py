@@ -23,6 +23,9 @@ URL = '/graphql/'
 PSP_RETURN_URL = '/psp-return/'
 PASSWORD = 'S3cure-Passw0rd!'
 
+SIGN_IN = '''
+mutation($data: SignIn!) { signIn(data: $data) { token user { email } } }
+'''
 SOCIAL_SIGN_IN = '''
 mutation($data: SocialSignIn!) {
   socialSignIn(data: $data) { token user { email role firstName lastName } }
@@ -576,6 +579,31 @@ class UserTests(GraphQLTestCase):
         self.assertEqual(self.error_code(result), 'ERR001')
         result = await self.execute(UPDATE_ADMIN_USER, {'data': data}, self.admin)
         self.assertEqual(self.ok(result, 'updateAdminUser')['status'], 'REJECTED')
+
+    async def test_sign_in(self):
+        self.customer.set_password(PASSWORD)
+        await self.customer.asave()
+        data = {'email': 'Customer@example.com', 'password': PASSWORD}
+        response = self.ok(await self.execute(SIGN_IN, {'data': data}), 'signIn')
+        self.assertEqual(response['user']['email'], 'customer@example.com')
+
+        wrong = {**data, 'password': 'wrong'}
+        result = await self.execute(SIGN_IN, {'data': wrong})
+        self.assertEqual(self.error_code(result), 'ERR059')
+        # No password set (social sign in)
+        social = {**data, 'email': 'other@example.com'}
+        result = await self.execute(SIGN_IN, {'data': social})
+        self.assertEqual(self.error_code(result), 'ERR059')
+
+        unknown = {**data, 'email': 'unknown@example.com'}
+        result = await self.execute(SIGN_IN, {'data': unknown})
+        self.assertEqual(self.error_code(result), 'ERR010')
+        # Inactive users get the same error whatever the password is
+        self.customer.is_active = False
+        await self.customer.asave()
+        for inactive in (data, wrong):
+            result = await self.execute(SIGN_IN, {'data': inactive})
+            self.assertEqual(self.error_code(result), 'ERR010')
 
     async def test_sign_up_cannot_choose_other_roles(self):
         result = await self.sign_up('x@example.com', role='OPERATOR')
