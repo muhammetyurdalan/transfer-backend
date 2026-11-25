@@ -636,3 +636,33 @@ class ThroughMessage(models.Model):
                 name='unique_message_receiver'
             )
         ]
+
+
+class MessageReaction(models.Model):
+    message = models.ForeignKey(
+        Message,
+        related_name='reactions',
+        on_delete=models.CASCADE
+    )
+    user = models.ForeignKey(
+        User,
+        related_name='message_reactions',
+        on_delete=models.CASCADE
+    )
+    emoji = models.CharField(
+        max_length=10,
+        choices=enums.ReactionEmoji.choices
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['message', 'user'],
+                name='unique_message_reaction'
+            )
+        ]
+
+    def __str__(self):
+        return f'message_id: {self.message_id}, emoji: {self.emoji}'

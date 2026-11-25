@@ -39,6 +39,7 @@ class Action(TextChoices):
     UPDATE_MESSAGE = 'UPDATE_MESSAGE'
     DELETE_MESSAGE = 'DELETE_MESSAGE'
     MESSAGE_STATUS = 'MESSAGE_STATUS'
+    MESSAGE_REACTION = 'MESSAGE_REACTION'
     PAYMENT_SUCCESS = 'PAYMENT_SUCCESS'
     PAYMENT_FAILED = 'PAYMENT_FAILED'
     TIP_PAYMENT_SUCCESS = 'TIP_PAYMENT_SUCCESS'
@@ -56,6 +57,16 @@ class MessageStatus(TextChoices):
     SENT = 'SENT'
     DELIVERED = 'DELIVERED'
     SEEN = 'SEEN'
+
+
+@enum
+class ReactionEmoji(TextChoices):
+    LIKE = 'LIKE'
+    LOVE = 'LOVE'
+    LAUGH = 'LAUGH'
+    WOW = 'WOW'
+    SAD = 'SAD'
+    PRAY = 'PRAY'
 
 
 @enum

@@ -667,7 +667,7 @@ def get_message_status(root, info: Info) -> Optional[enums.MessageStatus]:
 @sbd.type(
     models.Message,
     exclude=['transfer', 'sender', 'receivers', 'deleted_by', 'parent',
-             'replies', 'through_messages', 'status']
+             'replies', 'through_messages', 'status', 'reactions']
 )
 class ParentMessage:
     sender_id: sb.ID
@@ -683,6 +683,13 @@ class ParentMessage:
     )
 
 
+@sbd.type(models.MessageReaction, exclude=['message'])
+class MessageReaction:
+    user_id: sb.ID
+    user: Optional[User]
+    emoji: enums.ReactionEmoji
+
+
 @sbd.type(
     models.Message,
     exclude=['transfer', 'deleted_by', 'replies', 'through_messages']
@@ -693,6 +700,7 @@ class Message:
     parent_id: Optional[sb.ID]
     sender: Optional[User]
     receivers: Optional[List[User]]
+    reactions: List[MessageReaction]
     parent: Optional[ParentMessage] = sbd.field(select_related=['parent'])
     is_deleted: Optional[bool]
     status: Optional[enums.MessageStatus] = sbd.field(

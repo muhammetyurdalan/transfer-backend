@@ -89,6 +89,14 @@ async def get_message_receiver_ids(message):
     return [receiver_id async for receiver_id in receiver_ids]
 
 
+async def get_reaction_receiver_ids(user, message):
+    '''Those who can still see the message, except user.'''
+    viewer_ids = {message.sender_id} | await utils.get_admin_ids()
+    viewer_ids |= set(await get_message_receiver_ids(message))
+    args = (user.id, message.transfer)
+    return viewer_ids & await utils.get_messaging_receiver_ids(*args)
+
+
 def get_message_payload(message):
     return {
         'transfer_id': str(message.transfer_id),
@@ -227,6 +235,7 @@ class Mutation:
         await message.asave(update_fields=[
             'is_deleted', 'deleted_time', 'deleted_by', 'file'
         ])
+        await message.reactions.all().adelete()
         receiver_ids = await get_message_receiver_ids(message)
         args = (user.id, enums.Action.DELETE_MESSAGE, receiver_ids)
         kwargs = {
@@ -277,3 +286,42 @@ class Mutation:
             messages = messages.filter(transfer_id=transfer_id)
         await advance_messages(user, messages, MessageStatus.DELIVERED)
         return outputs.SuccessResponse(success=True)
+
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
+    async def react_message(
+        root, info: Info,
+        id: sb.ID,
+        emoji: Optional[enums.ReactionEmoji] = None
+    ) -> outputs.Message:
+        """
+        One reaction per user and message: emoji adds or replaces it, null
+        removes it. No notification, only a MESSAGE_REACTION event.
+        """
+        user = info.context['user']
+        messages = manager.select_related('transfer').filter(pk=id)
+        message = await messages.afirst()
+        assert message, dumps({'code': 'ERR001'})
+        visible = await get_visible_messages(user, message.transfer)
+        visible = await visible.filter(pk=message.pk).aexists()
+        assert visible, dumps({'code': 'ERR001'})
+        assert not message.is_deleted, dumps({'code': 'ERR021'})
+        check_messaging_available(message.transfer)
+        if emoji:
+            await models.MessageReaction.objects.aupdate_or_create(
+                message=message, user=user, defaults={'emoji': emoji}
+            )
+        else:
+            reactions = message.reactions.filter(user=user)
+            deleted, _ = await reactions.adelete()
+            if not deleted:
+                return message
+        receiver_ids = await get_reaction_receiver_ids(user, message)
+        args = (user.id, enums.Action.MESSAGE_REACTION, receiver_ids)
+        kwargs = {
+            'transfer_id': str(message.transfer_id),
+            'message_id': str(message.id),
+            'message': emoji.value if emoji else ''
+        }
+        await utils.broadcast(*args, **kwargs)
+        return message

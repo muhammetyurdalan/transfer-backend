@@ -164,6 +164,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
   - Değişiklik satır kilidiyle yapılır (`update_message_status`), olayı sadece gerçekten değiştiren istek yayınlar: `MESSAGE_STATUS`, sadece gönderene, `transferId` + `messageIds` + `messageStatus`.
   - `updateMessage`/`deleteMessage` `update_fields` ile kaydeder, eski `status`'ü geri yazmaz.
   - Migration `0021` eski mesajlardan okunmuş olanları `SEEN` yapar, diğerleri `SENT`.
+- **Tepkiler** (`MessageReaction`, `Message.reactions`): kişi başına mesaj başına tek tepki. `emoji` `ReactionEmoji` kodu olarak saklanır (`LIKE` 👍, `LOVE` ❤️, `LAUGH` 😂, `WOW` 😮, `SAD` 😢, `PRAY` 🙏; gösterim istemcide). `reactMessage(id, emoji?)`: emoji ekler/değiştirir, `null` kaldırır. Kendi mesajına da verilebilir. Mesajı göremeyen/olmayan `ERR001`, silinmiş `ERR021`, sohbet kapalı `ERR019`. Mesaj silinince tepkileri de silinir. **Bildirim gitmez**, tikleri etkilemez; sadece `MESSAGE_REACTION` olayı, tepki veren dışında mesajı hâlâ görebilenlere (`get_reaction_receiver_ids`): `transferId`, `messageId`, `message` (emoji kodu, kaldırmada boş).
 
 ### 4.5 Bildirim ve push
 - `utils.create_notifications` DB + WebSocket (`NOTIFICATION`) + FCM push (`FCM_ENABLED`, yani `FIREBASE_CREDENTIALS` doluysa, `tasks.send_push`).
@@ -176,7 +177,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - `check_transfers_expiring`: `pickup_time`'ı geçmiş **sadece `PENDING`** (ödenmemiş) transferler `EXPIRED` olur, ödeme linki `/expirePaymentLink` ile kapatılır. Koşullu update ile yapılır, aynı anda gelen ödeme kazanır. `ACCEPTED`/`STARTED` transferlere dokunulmaz (kullanıcı kararı, ödenmiş transfer otomatik expire/iade edilmez). Bildirim gönderilmez.
 
 ### 4.6 WebSocket olayları (`subscribe`, `SubscriptionResponse`)
-`USER_UPDATED`, `USER_DEACTIVATED`, `NOTIFICATION`, `MESSAGE`, `UPDATE_MESSAGE`, `DELETE_MESSAGE`, `MESSAGE_STATUS` (§4.4), `PAYMENT_SUCCESS`, `PAYMENT_FAILED`, `TIP_PAYMENT_SUCCESS`, `TIP_PAYMENT_FAILED`, `REFUND` (sadece bildirim), `TRANSFER_PAID`, `TRANSFER_ASSIGNED`, `TRANSFER_STATUS_UPDATED`, `TRANSFER_CANCELLED`. Transfer olaylarında `transferId` dolu.
+`USER_UPDATED`, `USER_DEACTIVATED`, `NOTIFICATION`, `MESSAGE`, `UPDATE_MESSAGE`, `DELETE_MESSAGE`, `MESSAGE_STATUS` (§4.4), `MESSAGE_REACTION` (§4.4), `PAYMENT_SUCCESS`, `PAYMENT_FAILED`, `TIP_PAYMENT_SUCCESS`, `TIP_PAYMENT_FAILED`, `REFUND` (sadece bildirim), `TRANSFER_PAID`, `TRANSFER_ASSIGNED`, `TRANSFER_STATUS_UPDATED`, `TRANSFER_CANCELLED`. Transfer olaylarında `transferId` dolu.
 
 ## 5. Hata kodları
 

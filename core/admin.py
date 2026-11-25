@@ -7,8 +7,9 @@ from django.core.exceptions import ValidationError
 from modeltranslation.admin import TranslationAdmin
 from core.models import (
     Reason,
-    City, District, Invitation, Leg, Message, Notification, State, ThroughMessage,
-    Transaction, Transfer, TransferDriver, User, Vehicle, VehicleCategory
+    City, District, Invitation, Leg, Message, MessageReaction, Notification,
+    State, ThroughMessage, Transaction, Transfer, TransferDriver, User, Vehicle,
+    VehicleCategory
 )
 
 
@@ -208,6 +209,12 @@ class ThroughMessageInline(admin.TabularInline):
     extra = 0
 
 
+class MessageReactionInline(admin.TabularInline):
+    model = MessageReaction
+    raw_id_fields = ['user']
+    extra = 0
+
+
 @admin.register(Message)
 class MessageAdmin(admin.ModelAdmin):
     list_display = [
@@ -215,4 +222,4 @@ class MessageAdmin(admin.ModelAdmin):
     ]
     list_filter = ['status', 'is_deleted']
     raw_id_fields = ['transfer', 'sender', 'parent', 'deleted_by']
-    inlines = [ThroughMessageInline]
+    inlines = [ThroughMessageInline, MessageReactionInline]
