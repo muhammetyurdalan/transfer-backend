@@ -158,6 +158,11 @@ mutation($id: ID!) { deleteReason(id: $id) { success } }
 DELETE_TRANSFER = '''
 mutation($id: ID!) { deleteTransfer(id: $id) { success } }
 '''
+CONFIRM_TRANSFER = '''
+mutation($data: ConfirmTransfer!) {
+  confirmTransfer(data: $data) { id status price isOfflinePayment }
+}
+'''
 TIP_DRIVER = '''
 mutation($data: TipDriver!) { tipDriver(data: $data) { paymentLink } }
 '''
@@ -290,7 +295,7 @@ mutation($id: ID!) { deleteDistrict(id: $id) { success } }
 STATE_FIELDS = '''
 id name code psp customerImposedHours customerImposedRates
 driverBufferMinutes allowMultipleVehicles allowUnconditionalRefund
-cancelPriceRate
+cancelPriceRate paymentEnabled
 '''
 STATES = '''
 query { states(ordering: [{name: ASC}]) { count states { name code } } }
@@ -1045,6 +1050,109 @@ class RefundOptionTests(GraphQLTestCase):
     async def test_operator_cancel_refunds_the_fee_too(self):
         refund = await self.refund_of(self.operator, 'UNCONDITIONAL')
         self.assertEqual(refund, Decimal('665.50'))
+
+
+class PaymentDisabledTests(GraphQLTestCase):
+    async def disable_payment(self, **kwargs):
+        await models.State.objects.filter(pk=self.turkey.id).aupdate(
+            payment_enabled=False, **kwargs
+        )
+
+    async def confirm(self, user=None, **kwargs):
+        created = await self.create_transfer()
+        data = {
+            'id': created['transfer']['id'],
+            'vehicleCategoryId': str(self.sedan.id), **kwargs
+        }
+        result = await self.execute(
+            CONFIRM_TRANSFER, {'data': data}, user or self.customer
+        )
+        return created['transfer']['id'], result
+
+    async def test_update_state(self):
+        await models.State.objects.filter(pk=self.turkey.id).aupdate(psp='stripe')
+        data = {'id': str(self.turkey.id), 'paymentEnabled': False}
+        result = await self.execute(UPDATE_STATE, {'data': data}, self.admin)
+        self.assertFalse(self.ok(result, 'updateState')['paymentEnabled'])
+        state = await models.State.objects.aget(pk=self.turkey.id)
+        self.assertFalse(state.payment_enabled)
+
+    async def test_confirm_requires_payment_off(self):
+        _, result = await self.confirm()
+        self.assertEqual(self.error_code(result), 'ERR061')
+
+    async def test_pay_when_off(self):
+        await self.disable_payment()
+        created = await self.create_transfer()
+        data = {
+            'id': created['transfer']['id'],
+            'vehicleCategoryId': str(self.sedan.id)
+        }
+        result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR060')
+        self.assertNotIn('/createPaymentLink', self.psp_paths())
+
+    async def test_confirm(self):
+        await self.disable_payment()
+        transfer_id, result = await self.confirm()
+        transfer = self.ok(result, 'confirmTransfer')
+        self.assertEqual(transfer['status'], 'ACCEPTED')
+        self.assertTrue(transfer['isOfflinePayment'])
+        self.assertEqual(Decimal(transfer['price']), Decimal('605.00'))
+        self.assertFalse(await models.Transaction.objects.aexists())
+        notifications = models.Notification.objects.filter(
+            action='TRANSFER_ACCEPTED'
+        )
+        receivers = {n.user_id async for n in notifications}
+        self.assertEqual(
+            receivers, {self.operator.id, self.admin.id, self.staff.id}
+        )
+        # Accepted: neither confirmed nor paid again
+        data = {'id': transfer_id, 'vehicleCategoryId': str(self.sedan.id)}
+        result = await self.execute(CONFIRM_TRANSFER, {'data': data}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR014')
+
+    async def test_confirm_expires_open_link(self):
+        created = await self.create_transfer()
+        data = {
+            'id': created['transfer']['id'],
+            'vehicleCategoryId': str(self.sedan.id)
+        }
+        result = await self.execute(PAY_TRANSFER, {'data': data}, self.customer)
+        self.ok(result, 'payTransfer')
+        await self.disable_payment()
+        result = await self.execute(CONFIRM_TRANSFER, {'data': data}, self.customer)
+        self.ok(result, 'confirmTransfer')
+        self.assertEqual(self.psp_paths()[-1], '/expirePaymentLink')
+
+    async def test_no_protection_without_payment(self):
+        await self.disable_payment(
+            allow_unconditional_refund=True, cancel_price_rate=Decimal('0.10')
+        )
+        _, result = await self.confirm(refundOption='UNCONDITIONAL')
+        self.assertEqual(self.error_code(result), 'ERR055')
+
+    async def test_cancel_without_refund(self):
+        await self.disable_payment()
+        transfer_id, result = await self.confirm()
+        self.ok(result, 'confirmTransfer')
+        result = await self.execute(
+            CANCEL_TRANSFER, {'id': transfer_id}, self.customer
+        )
+        self.assertEqual(self.ok(result, 'cancelTransfer')['status'], 'CANCELLED')
+        self.assertNotIn('/refundPayment', self.psp_paths())
+        self.assertFalse(await models.Transaction.objects.aexists())
+
+    async def test_no_tip_when_off(self):
+        transfer = await self.assigned_transfer()
+        await models.Transfer.objects.filter(pk=transfer.pk).aupdate(
+            status='COMPLETED'
+        )
+        await self.disable_payment()
+        data = {'id': str(transfer.id), 'amount': '50'}
+        result = await self.execute(TIP_DRIVER, {'data': data}, self.customer)
+        self.assertEqual(self.error_code(result), 'ERR060')
+        self.assertNotIn('/createTipLink', self.psp_paths())
 
 
 QUOTE_TRANSFER = f'''

@@ -3,12 +3,12 @@
 # This file is distributed under the same license as the PACKAGE package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
-#: core/utils.py:324
+#: core/utils.py:331
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 14:16+0300\n"
+"POT-Creation-Date: 2026-11-26 21:53+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,29 +18,29 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 
-#: core/psp.py:159 core/schemas/transfer.py:524 tests.py:27
-msgid "New Transfer"
-msgstr "Neuer Transfer"
-
-#: core/psp.py:168 tests.py:36
+#: core/psp.py:159
 #, python-format
 msgid "Transfer #%(id)s is paid and waiting for a driver"
 msgstr "Transfer #%(id)s ist bezahlt und wartet auf einen Fahrer"
 
-#: core/psp.py:235
+#: core/psp.py:171 core/schemas/transfer.py:731
+msgid "New Transfer"
+msgstr "Neuer Transfer"
+
+#: core/psp.py:248
 msgid "New Tip"
 msgstr "Neues Trinkgeld"
 
-#: core/psp.py:236
+#: core/psp.py:249
 #, python-format
 msgid "You received a tip for transfer #%(id)s"
 msgstr "Sie haben ein Trinkgeld für Transfer #%(id)s erhalten"
 
-#: core/psp.py:353
+#: core/psp.py:366
 msgid "Refund"
 msgstr "Rückerstattung"
 
-#: core/psp.py:354
+#: core/psp.py:367
 #, python-format
 msgid "A refund was made for transfer #%(id)s"
 msgstr "Für Transfer #%(id)s wurde eine Rückerstattung vorgenommen"
@@ -50,47 +50,53 @@ msgstr "Für Transfer #%(id)s wurde eine Rückerstattung vorgenommen"
 msgid "You are invited to {app_name}"
 msgstr "Sie wurden zu {app_name} eingeladen"
 
-#: core/schemas/message.py:66
+#: core/schemas/message.py:69
 msgid "New Message"
 msgstr "Neue Nachricht"
 
-#: core/schemas/message.py:67
+#: core/schemas/message.py:70
 msgid "You have a new message"
 msgstr "Sie haben eine neue Nachricht"
 
-#: core/schemas/transfer.py:338
+#: core/schemas/transfer.py:428
 msgid "Transfer Unassigned"
 msgstr "Transfer entzogen"
 
-#: core/schemas/transfer.py:339
+#: core/schemas/transfer.py:429
 #, python-format
 msgid "Transfer #%(id)s was unassigned from you"
 msgstr "Transfer #%(id)s wurde Ihnen entzogen"
 
-#: core/schemas/transfer.py:525
+#: core/schemas/transfer.py:672
+#, python-format
+msgid "Transfer #%(id)s is confirmed without payment and waiting for a driver"
+msgstr ""
+"Transfer #%(id)s wurde ohne Zahlung bestätigt und wartet auf einen Fahrer"
+
+#: core/schemas/transfer.py:732
 #, python-format
 msgid "Transfer #%(id)s was assigned to you"
 msgstr "Transfer #%(id)s wurde Ihnen zugewiesen"
 
-#: core/schemas/transfer.py:588
+#: core/schemas/transfer.py:798
 msgid "Transfer Status Updated"
 msgstr "Transferstatus aktualisiert"
 
-#: core/schemas/transfer.py:589
+#: core/schemas/transfer.py:799
 #, python-format
 msgid "Transfer #%(id)s status was updated"
 msgstr "Der Status von Transfer #%(id)s wurde aktualisiert"
 
-#: core/schemas/transfer.py:624
+#: core/schemas/transfer.py:839
 msgid "Transfer Cancelled"
 msgstr "Transfer storniert"
 
-#: core/schemas/transfer.py:625
+#: core/schemas/transfer.py:840
 #, python-format
 msgid "Transfer #%(id)s was cancelled"
 msgstr "Transfer #%(id)s wurde storniert"
 
-#: core/schemas/user.py:61 tests.py:16
+#: core/schemas/user.py:61
 msgid "Verification Code"
 msgstr "Bestätigungscode"
 

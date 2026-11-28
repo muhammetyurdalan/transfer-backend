@@ -449,6 +449,7 @@ def get_cancel_price(transfer, refund_option):
         return ZERO
     state = transfer.state
     allowed = state is not None and state.allow_unconditional_refund
+    allowed = allowed and state.payment_enabled
     assert allowed, dumps({'code': 'ERR055'})
     rate = state.cancel_price_rate
     return (transfer.customer_price * rate).quantize(ZERO, ROUND_HALF_UP)
@@ -461,6 +462,11 @@ def get_payment_response(link, expire_time):
         payment_link=link,
         link_expire_time=expire_time
     )
+
+
+def payment_enabled(transfer):
+    """Online payment (and tips), off when the transfer's state turns it off."""
+    return transfer.state is None or transfer.state.payment_enabled
 
 
 def cancellation_category(user, transfer):
@@ -604,11 +610,12 @@ class Mutation:
         allow it), then returns a payment link for price (customerPrice +
         cancelPrice). The transfer becomes ACCEPTED when the payment service
         reports a successful payment (psp-return), then operators are
-        notified.
+        notified. ERR060 if the state turned payment off (confirmTransfer).
         """
         user = info.context['user']
         expand = ['customer', 'state']
         transfer = await get_transfer(user, data.id, EDITABLE_STATUSES, expand)
+        assert payment_enabled(transfer), dumps({'code': 'ERR060'})
         check_pickup_time(transfer.pickup_time)
         set_default_passenger(transfer, transfer.customer)
         check_passenger(transfer, required=PASSENGER_FIELDS)
@@ -622,6 +629,50 @@ class Mutation:
             transfer.psp_data['payment_link'],
             transfer.psp_data['payment_link_expire_time']
         )
+
+    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
+    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
+    async def confirm_transfer(
+        root, info: Info,
+        data: inputs.ConfirmTransfer
+    ) -> outputs.Transfer:
+        """
+        payTransfer without payment, only when the transfer's state turned
+        payment off (ERR061 otherwise): same checks and vehicle choice
+        (no UNCONDITIONAL refund, ERR055), any open payment link is expired,
+        the transfer becomes ACCEPTED with isOfflinePayment (the fare is
+        collected outside the app) and operators are notified like a paid one.
+        """
+        user = info.context['user']
+        expand = ['customer', 'state']
+        transfer = await get_transfer(user, data.id, EDITABLE_STATUSES, expand)
+        assert not payment_enabled(transfer), dumps({'code': 'ERR061'})
+        check_pickup_time(transfer.pickup_time)
+        set_default_passenger(transfer, transfer.customer)
+        check_passenger(transfer, required=PASSENGER_FIELDS)
+        await set_vehicle_selection(
+            transfer, data.vehicle_category_id, data.vehicle_count,
+            data.refund_option
+        )
+        await psp.expire_payment_link(transfer)
+        await transfer.asave()
+        transfers = models.Transfer.objects.filter(
+            pk=transfer.pk, status=Status.PENDING
+        )
+        updated = await transfers.aupdate(
+            status=Status.ACCEPTED, is_offline_payment=True,
+            updated_at=timezone.now()
+        )
+        assert updated, dumps({'code': 'ERR014'})
+        transfer.status = Status.ACCEPTED
+        transfer.is_offline_payment = True
+        body = gettext_noop(
+            'Transfer #%(id)s is confirmed without payment and waiting for a '
+            'driver'
+        )
+        await psp.notify_transfer_accepted(transfer, body, sender_id=user.id)
+        activate(user.language)
+        return transfer
 
     @sb.mutation(description='OPERATOR, ADMIN, STAFF')
     @permission_required('OPERATOR', 'ADMIN', 'STAFF')
@@ -819,11 +870,12 @@ class Mutation:
         Tip link for a COMPLETED transfer, to one of its internal drivers
         (transferDriverId, required if it has more than one). The TIP
         transaction is created and the driver is notified when the payment
-        service reports success.
+        service reports success. ERR060 if the state turned payment off.
         """
         user = info.context['user']
         expand = ['customer', 'state']
         transfer = await get_transfer(user, data.id, TIPPABLE_STATUSES, expand)
+        assert payment_enabled(transfer), dumps({'code': 'ERR060'})
         amount = data.amount.quantize(ZERO)
         valid = amount > ZERO and transfer.currency
         assert valid, dumps({'code': 'ERR033'})

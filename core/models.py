@@ -38,6 +38,11 @@ class State(models.Model):
         default=False,
         help_text='Customers may book several vehicles of a category'
     )
+    payment_enabled = models.BooleanField(
+        default=True,
+        help_text='Transfers are paid online. Off: customers confirm without '
+        'paying (the fare is collected outside the app) and tips are off'
+    )
     allow_unconditional_refund = models.BooleanField(
         default=False,
         help_text='Customers may buy a cancellation protection at payment'
@@ -379,6 +384,11 @@ class Transfer(models.Model):
         max_length=3,
         choices=enums.Currency.choices,
         blank=True, null=True
+    )
+    is_offline_payment = models.BooleanField(
+        default=False,
+        help_text='Confirmed without an online payment (State.payment_enabled '
+        'off), the fare is collected outside the app'
     )
     psp_data = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
     cancellation_reason = models.ForeignKey(
