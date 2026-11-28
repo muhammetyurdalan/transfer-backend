@@ -3450,7 +3450,9 @@ mutation($data: CreateTransfer!, $contact: GuestContact!) {
 '''
 GUEST_SESSION = '''
 mutation($transferId: ID!, $token: String!) {
-  guestSession(transferId: $transferId, token: $token) { session transferId }
+  guestSession(transferId: $transferId, token: $token) {
+    session transferId customerId isClaimed
+  }
 }
 '''
 RENEW_BOOKING_LINK = '''
@@ -3621,8 +3623,13 @@ class GuestBookingTests(GraphQLTestCase):
         variables = {'transferId': transfer_id, 'token': booking['accessToken']}
         result = await self.execute(CLAIM_TRANSFER, variables, self.other_customer)
         self.assertEqual(self.error_code(result), 'ERR063')
+        session = self.ok(await self.execute(GUEST_SESSION, variables), 'guestSession')
+        self.assertEqual(session['customerId'], str(self.customer.id))
+        self.assertFalse(session['isClaimed'])
         result = await self.execute(CLAIM_TRANSFER, variables, self.customer)
         self.ok(result, 'claimTransfer')
+        session = self.ok(await self.execute(GUEST_SESSION, variables), 'guestSession')
+        self.assertTrue(session['isClaimed'])
         result = await self.execute(TRANSFERS, {}, self.customer)
         self.assertEqual(self.ok(result, 'transfers')['count'], 2)
 

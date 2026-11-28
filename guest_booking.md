@@ -121,7 +121,7 @@ Create Transfer formu ─► Continue ─► Login sayfası
 | `features/booking/GuestBookingMenu.tsx` | ✅ Kaldırıldı; Continue → Login (taslak korunur) |
 | Login sayfası | ✅ Taslak varsa "Üye olmadan devam et →" (sürücü kaydı butonunun yerinde) |
 | `features/guest/GuestContactPage.tsx` | ✅ `/booking/new`: ad, soyad, e-posta, telefon, şartlar → `createGuestTransfer` |
-| `features/guest/GuestBookingPage.tsx` | ✅ `/booking/:id`: token → `guestSession`; mevcut detay sayfası misafir modunda, düzenleme (`/booking/:id/edit`, `updateTransfer` GUEST'e açık), mesaj drawer'ı, iptal, ödeme kapalıysa kod diyaloğu (`GuestConfirmDialog`), bağlantıyı kopyala, hesabıma ekle |
+| `features/guest/GuestBookingPage.tsx` | ✅ `/booking/:id`: token → `guestSession`; mevcut detay sayfası misafir modunda, düzenleme (`/booking/:id/edit`, `updateTransfer` GUEST'e açık), mesaj drawer'ı, iptal, ödeme kapalıysa kod diyaloğu (`GuestConfirmDialog`), bağlantıyı kopyala, sahibi giriş yapınca otomatik hesaba aktarma (`claimTransfer`) |
 | Apollo/WebSocket istemcisi | ✅ `createGuestClient` (ayrı istemci ve WS) |
 | `lib/storage.ts` | ✅ `guestBookingStore` (cihazdaki token'lar). "Bu cihazdaki rezervasyonlarım" listesi ❌ henüz yok |
 | Operatör ekranları | ⏳ `isGuestBooking`/`payer_*` detayda sorgulanıyor, rozet ve gösterim yok |
