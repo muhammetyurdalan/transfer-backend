@@ -135,6 +135,9 @@ class CreateState:
     )
     driver_buffer_minutes: Optional[int] = optional('default 30')
     allow_multiple_vehicles: Optional[bool] = optional('default false')
+    payment_enabled: Optional[bool] = optional(
+        'default true. Off: confirmTransfer without payment, no tips'
+    )
     allow_unconditional_refund: Optional[bool] = optional(
         'default false, needs cancelPriceRate > 0'
     )
@@ -157,6 +160,10 @@ class UpdateState:
     )
     driver_buffer_minutes: Optional[int] = optional()
     allow_multiple_vehicles: Optional[bool] = optional()
+    payment_enabled: Optional[bool] = optional(
+        'off: confirmTransfer without payment, no tips. Open payment links '
+        'stay valid'
+    )
     allow_unconditional_refund: Optional[bool] = optional(
         'needs cancelPriceRate > 0'
     )
@@ -399,6 +406,18 @@ class PayTransfer:
     refund_option: Optional[enums.RefundOption] = optional(
         'default STANDARD. UNCONDITIONAL adds cancelPrice (state '
         'cancelPriceRate * customerPrice), only if the state allows it'
+    )
+
+
+@sb.input
+class ConfirmTransfer:
+    id: sb.ID
+    vehicle_category_id: sb.ID = required('one of vehicleOptions')
+    vehicle_count: Optional[int] = optional(
+        "At least the option's count, which is the default"
+    )
+    refund_option: Optional[enums.RefundOption] = optional(
+        'default STANDARD. UNCONDITIONAL needs an online payment (ERR055)'
     )
 
 

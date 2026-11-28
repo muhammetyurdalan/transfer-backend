@@ -51,6 +51,7 @@ Kayıt e-posta doğrulamalı (`getCode` → `validateCode`) iki mutation'la yap�
 createTransfer(vehicleCategoryId?, vehicleCount?, refundOption?) ──► PENDING + vehicleOptions (uygun kategoriler, her biri fiyatlı); seçim verilirse fiyatıyla kaydedilir, link açılmaz
    │ (updateTransfer: rota/ihtiyaç değişirse seçim sıfırlanır, link expire edilir; vehicleCategoryId verilirse yeni seçim yazılır)
 payTransfer(vehicleCategoryId, vehicleCount?, refundOption?) ──► yolcu boşsa müşteriden (yine boşsa ERR058/ERR057), kategori + araç sayısı + customer_price (birim × sayı) + cancel_price (koşulsuz iadede) yazılır, /createPaymentLink (price = toplam)
+   │ (state'te ödeme kapalıysa payTransfer ERR060, yerine confirmTransfer ──► doğrudan ACCEPTED + isOfflinePayment, §4.3.2)
    │
 psp-return PAYMENT_RETURN success ──► PAID, PAYMENT transaction, tüm OPERATOR'lere bildirim (TRANSFER_PAID)
    │
@@ -70,7 +71,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - `updateTransfer` bu isimlerden birini alırsa yeniden hesaplanır, verilmeyen taraf mevcut district'ini korur.
 - Aynı isimde birden fazla district varsa (ör. "Merkez") ilk eşleşen (alfabetik) alınır. Şehir adı alınmadığı için ayırt edilemez.
 - **City** (`schemas/city.py`) ve **District** (`schemas/district.py`): `city`/`cities`, `district`/`districts` token'sız çalışır (public). Pasif district'leri sadece ADMIN/STAFF görür. `districts` filtresinde `stateId` var. `create`/`update`/`delete` ADMIN, STAFF. Şehir silmek district'lerini de siler. Transferde kullanılan district/şehir silinemez (`ERR041`/`ERR040`), district pasifleştirilmeli. Public sorgular `state`'i açtığı için `State.psp` ve `driverBufferMinutes` sadece ADMIN/STAFF/OPERATOR'e görünür.
-- **State** (`schemas/state.py`): `state`/`states` (ADMIN, STAFF, OPERATOR), `createState`/`updateState`/`deleteState` (ADMIN, STAFF). `allowMultipleVehicles` çoklu araç seçimini açar (§4.1), `allowUnconditionalRefund` + `cancelPriceRate` (0–1) koşulsuz iadeyi (§4.3.0) açar; açıkken oran 0'dan büyük olmalı (`ERR030`). Bu üçü public (müşteri `transfer.state` üzerinden okur). `code` büyük/küçük harf duyarsız benzersiz (`ERR038`). `customerImposedHours` artan pozitif saatler, `customerImposedRates` aynı uzunlukta 0–1 arası oranlar (`ERR030`), oranlar string olarak saklanır. Silme şehir ve district'leri de siler, transfer bağlıysa `ERR037`.
+- **State** (`schemas/state.py`): `state`/`states` (ADMIN, STAFF, OPERATOR), `createState`/`updateState`/`deleteState` (ADMIN, STAFF). `allowMultipleVehicles` çoklu araç seçimini açar (§4.1), `allowUnconditionalRefund` + `cancelPriceRate` (0–1) koşulsuz iadeyi (§4.3.0) açar; açıkken oran 0'dan büyük olmalı (`ERR030`). `paymentEnabled` (varsayılan true) online ödemeyi açıp kapatır (§4.3.2). Bunlar public (müşteri `transfer.state` üzerinden okur). `code` büyük/küçük harf duyarsız benzersiz (`ERR038`). `customerImposedHours` artan pozitif saatler, `customerImposedRates` aynı uzunlukta 0–1 arası oranlar (`ERR030`), oranlar string olarak saklanır. Silme şehir ve district'leri de siler, transfer bağlıysa `ERR037`.
 
 ### 4.0.1 Ara duraklar (`Leg`)
 - `createTransfer` opsiyonel `legs` listesi alır (`CreateLeg`: başlangıç/bitiş konum, adres ve zaman, `order`, `route`). Gelirse transferle birlikte kaydedilir, `Transfer.legs` olarak `order` sırasıyla döner.
@@ -154,6 +155,12 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - Başlangıç verisi `core/fixtures/reasons.json`: 73 kayıt, 6 kategori, en/tr/de/ru, kategori içi `order`, kodlar kategori önekiyle (`withdraw_`, `cancel_`, `operator_`, `driver_`, `driver_reject_`, `vehicle_reject_`). `manage.py loaddata reasons`; pk'lar 1–73, aynı pk'lı kayıtların üstüne yazar. pk'lar kaydırıldıysa eski sürümün üstüne yüklenemez (`code` benzersiz), önce eski sebepler silinmeli (transferde kullanılanlar `PROTECT`).
 - `transfer`/`transfers` sorguları ve `cancelTransfer` sonucu kullanıcının dilini aktif eder (`cancellationReason.description`, `vehicleCategory.name`). `notify_users` alıcıların dilini aktif ettiği için mutation'larda `activate(user.language)` bildirimden **sonra** çağrılmalı.
 
+### 4.3.2 Ödemeyi kapatma (`State.payment_enabled`)
+- ADMIN/STAFF `updateState(paymentEnabled: false)` ile bölgede online ödemeyi kapatır. Kapalıyken `payTransfer` ve `tipDriver` `ERR060`, koşulsuz iade seçilemez (`get_cancel_price` `ERR055`; create/update/confirm hepsinde).
+- **`confirmTransfer(data: ConfirmTransfer)`** (CUSTOMER, OPERATOR, ADMIN, STAFF; `PayTransfer` ile aynı alanlar): sadece ödeme kapalıyken (açıksa `ERR061`). `payTransfer`'ın kontrolleri ve araç seçimi, açık ödeme linki expire edilir, koşullu update ile `PENDING → ACCEPTED` + `Transfer.is_offline_payment = true` (eski linkin ödemesi araya girdiyse `ERR014`). Bildirim ödenmiş transferdeki gibi (`psp.notify_transfer_accepted`: ADMIN/STAFF + operatör bildirimi ve `transfer_accepted` maili, müşteriye mail, `TRANSFER_ACCEPTED`), metni "confirmed without payment". PAYMENT transaction oluşmaz, ücret sistem dışında alınır.
+- `isOfflinePayment` transferi iptal etmek iade çağırmaz (`refund_cancelled_transfer` PAYMENT yoksa bir şey yapmaz), müşteri iptal cezası uygulanamaz.
+- Anahtar kapatılınca açık ödeme linklerine dokunulmaz: kendi süresinde kapanır, ödenirse webhook normal işler. `refundTransaction`/`retryRefund` kapalı bölgede de çalışır (eski ödemeler).
+
 ### 4.4 Mesajlaşma (`schemas/message.py`)
 - Mesajlar `Transfer`'e bağlı. Katılımcılar: `customer`, `operator` (atamayı yapan), transferin bütün iç sürücüleri (`utils.get_driver_ids`, dış sürücülerin hesabı yok) ve **tüm aktif ADMIN/STAFF kullanıcıları** (her transferin mesajlaşmasına dahil). Alıcılar gönderen dışındaki katılımcılar (`utils.get_messaging_receiver_ids`), yani ADMIN/STAFF her mesajın bildirimini ve WebSocket olayını alır.
 - Sadece `ACCEPTED`/`STARTED` iken açık (`ERR019`). Gönderebilen roller: CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF. ADMIN/STAFF hepsini okur. Sonradan eklenen ADMIN/STAFF eski mesajların alıcısı olmaz ama hepsini okuyabilir.
@@ -181,7 +188,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR060**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR062**.
 
 | Aralık | Alan |
 |---|---|
@@ -192,7 +199,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 | ERR030 | Geçersiz parametre |
 | ERR057, ERR058 | Yolcu telefonu / adı zorunlu (`payTransfer`, `updateTransfer`'da boşa çevirme) |
 | ERR056 | Çok fazla istek (rate limit, `quoteTransfer`) |
-| ERR031–ERR034, ERR042, ERR055 | Ödeme (ERR042: iade zaten tamamlandı, ERR055: state koşulsuz iadeye izin vermiyor) |
+| ERR031–ERR034, ERR042, ERR055, ERR060–ERR061 | Ödeme (ERR042: iade zaten tamamlandı, ERR055: state koşulsuz iadeye izin vermiyor veya ödeme kapalı, ERR060: state'te ödeme kapalı (`payTransfer`, `tipDriver`), ERR061: ödeme açık, `confirmTransfer` kullanılamaz) |
 | ERR036–ERR038 | State |
 | ERR039–ERR041 | City, district (ERR039: city bulunamadı, ERR040/041: kullanımda) |
 | ERR050–ERR054 | İptal sebebi (ERR050: reason bulunamadı/pasif, ERR051: iptal sebebi zorunlu, ERR052: sebep bu iptale uygun değil, ERR053: kod zaten var, ERR054: sebep kullanımda) |

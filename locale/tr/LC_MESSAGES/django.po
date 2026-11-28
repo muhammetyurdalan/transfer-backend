@@ -3,12 +3,12 @@
 # This file is distributed under the same license as the PACKAGE package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
-#: core/utils.py:324
+#: core/utils.py:331
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 14:16+0300\n"
+"POT-Creation-Date: 2026-11-26 21:53+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -18,29 +18,29 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=(n > 1);\n"
 
-#: core/psp.py:159 core/schemas/transfer.py:524 tests.py:27
-msgid "New Transfer"
-msgstr "Yeni Transfer"
-
-#: core/psp.py:168 tests.py:36
+#: core/psp.py:159
 #, python-format
 msgid "Transfer #%(id)s is paid and waiting for a driver"
 msgstr "#%(id)s numaralı transfer ödendi, sürücü bekliyor"
 
-#: core/psp.py:235
+#: core/psp.py:171 core/schemas/transfer.py:731
+msgid "New Transfer"
+msgstr "Yeni Transfer"
+
+#: core/psp.py:248
 msgid "New Tip"
 msgstr "Yeni Bahşiş"
 
-#: core/psp.py:236
+#: core/psp.py:249
 #, python-format
 msgid "You received a tip for transfer #%(id)s"
 msgstr "#%(id)s numaralı transfer için bahşiş aldınız"
 
-#: core/psp.py:353
+#: core/psp.py:366
 msgid "Refund"
 msgstr "İade"
 
-#: core/psp.py:354
+#: core/psp.py:367
 #, python-format
 msgid "A refund was made for transfer #%(id)s"
 msgstr "#%(id)s numaralı transfer için iade yapıldı"
@@ -50,47 +50,52 @@ msgstr "#%(id)s numaralı transfer için iade yapıldı"
 msgid "You are invited to {app_name}"
 msgstr "{app_name} için davet edildiniz"
 
-#: core/schemas/message.py:66
+#: core/schemas/message.py:69
 msgid "New Message"
 msgstr "Yeni Mesaj"
 
-#: core/schemas/message.py:67
+#: core/schemas/message.py:70
 msgid "You have a new message"
 msgstr "Yeni bir mesajınız var"
 
-#: core/schemas/transfer.py:338
+#: core/schemas/transfer.py:428
 msgid "Transfer Unassigned"
 msgstr "Transfer Geri Alındı"
 
-#: core/schemas/transfer.py:339
+#: core/schemas/transfer.py:429
 #, python-format
 msgid "Transfer #%(id)s was unassigned from you"
 msgstr "#%(id)s numaralı transfer sizden alındı"
 
-#: core/schemas/transfer.py:525
+#: core/schemas/transfer.py:672
+#, python-format
+msgid "Transfer #%(id)s is confirmed without payment and waiting for a driver"
+msgstr "#%(id)s numaralı transfer ödemesiz onaylandı, sürücü bekliyor"
+
+#: core/schemas/transfer.py:732
 #, python-format
 msgid "Transfer #%(id)s was assigned to you"
 msgstr "#%(id)s numaralı transfer size atandı"
 
-#: core/schemas/transfer.py:588
+#: core/schemas/transfer.py:798
 msgid "Transfer Status Updated"
 msgstr "Transfer Durumu Güncellendi"
 
-#: core/schemas/transfer.py:589
+#: core/schemas/transfer.py:799
 #, python-format
 msgid "Transfer #%(id)s status was updated"
 msgstr "#%(id)s numaralı transferin durumu güncellendi"
 
-#: core/schemas/transfer.py:624
+#: core/schemas/transfer.py:839
 msgid "Transfer Cancelled"
 msgstr "Transfer İptal Edildi"
 
-#: core/schemas/transfer.py:625
+#: core/schemas/transfer.py:840
 #, python-format
 msgid "Transfer #%(id)s was cancelled"
 msgstr "#%(id)s numaralı transfer iptal edildi"
 
-#: core/schemas/user.py:61 tests.py:16
+#: core/schemas/user.py:61
 msgid "Verification Code"
 msgstr "Doğrulama Kodu"
 

@@ -156,8 +156,18 @@ async def process_payment_return(data):
     await transaction.asave()
     args = (None, Action.PAYMENT_SUCCESS, customer_ids)
     await utils.broadcast(*args, **action_kwargs)
+    body = gettext_noop('Transfer #%(id)s is paid and waiting for a driver')
+    await notify_transfer_accepted(transfer, body)
+
+
+async def notify_transfer_accepted(transfer, body, sender_id=None):
+    """
+    A transfer became ACCEPTED (paid, or confirmed without payment):
+    ADMIN/STAFF and its operator get a notification (body: gettext_noop) and
+    the transfer_accepted email, the customer the email. Needs customer.
+    """
     admin_ids = await utils.get_admin_ids()
-    receiver_ids = list(admin_ids | {transfer.operator_id})
+    receiver_ids = list((admin_ids | {transfer.operator_id}) - {None})
     subject = gettext_noop('New Transfer')
     email_data = {
         'action': 'transfer_accepted',
@@ -167,14 +177,15 @@ async def process_payment_return(data):
     await utils.notify_users(
         receiver_ids,
         subject,
-        gettext_noop('Transfer #%(id)s is paid and waiting for a driver'),
+        body,
         Action.TRANSFER_ACCEPTED,
         transfer,
+        sender_id=sender_id,
         email_data=email_data
     )
     await utils.send_email_to(transfer.customer, email_data)
-    args = (None, Action.TRANSFER_ACCEPTED, receiver_ids)
-    await utils.broadcast(*args, **action_kwargs)
+    args = (sender_id, Action.TRANSFER_ACCEPTED, receiver_ids)
+    await utils.broadcast(*args, transfer_id=str(transfer.id))
 
 
 # Tip

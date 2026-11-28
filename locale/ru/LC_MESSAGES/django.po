@@ -3,12 +3,12 @@
 # This file is distributed under the same license as the PACKAGE package.
 # FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
 #
-#: core/utils.py:324
+#: core/utils.py:331
 msgid ""
 msgstr ""
 "Project-Id-Version: PACKAGE VERSION\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-11-18 14:16+0300\n"
+"POT-Creation-Date: 2026-11-26 21:53+0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -20,29 +20,29 @@ msgstr ""
 "n%10<=4 && (n%100<12 || n%100>14) ? 1 : n%10==0 || (n%10>=5 && n%10<=9) || "
 "(n%100>=11 && n%100<=14)? 2 : 3);\n"
 
-#: core/psp.py:159 core/schemas/transfer.py:524 tests.py:27
-msgid "New Transfer"
-msgstr "Новый трансфер"
-
-#: core/psp.py:168 tests.py:36
+#: core/psp.py:159
 #, python-format
 msgid "Transfer #%(id)s is paid and waiting for a driver"
 msgstr "Трансфер №%(id)s оплачен и ожидает водителя"
 
-#: core/psp.py:235
+#: core/psp.py:171 core/schemas/transfer.py:731
+msgid "New Transfer"
+msgstr "Новый трансфер"
+
+#: core/psp.py:248
 msgid "New Tip"
 msgstr "Новые чаевые"
 
-#: core/psp.py:236
+#: core/psp.py:249
 #, python-format
 msgid "You received a tip for transfer #%(id)s"
 msgstr "Вы получили чаевые за трансфер №%(id)s"
 
-#: core/psp.py:353
+#: core/psp.py:366
 msgid "Refund"
 msgstr "Возврат"
 
-#: core/psp.py:354
+#: core/psp.py:367
 #, python-format
 msgid "A refund was made for transfer #%(id)s"
 msgstr "По трансферу №%(id)s оформлен возврат"
@@ -52,47 +52,52 @@ msgstr "По трансферу №%(id)s оформлен возврат"
 msgid "You are invited to {app_name}"
 msgstr "Вас пригласили в {app_name}"
 
-#: core/schemas/message.py:66
+#: core/schemas/message.py:69
 msgid "New Message"
 msgstr "Новое сообщение"
 
-#: core/schemas/message.py:67
+#: core/schemas/message.py:70
 msgid "You have a new message"
 msgstr "У вас новое сообщение"
 
-#: core/schemas/transfer.py:338
+#: core/schemas/transfer.py:428
 msgid "Transfer Unassigned"
 msgstr "Трансфер снят"
 
-#: core/schemas/transfer.py:339
+#: core/schemas/transfer.py:429
 #, python-format
 msgid "Transfer #%(id)s was unassigned from you"
 msgstr "Трансфер №%(id)s снят с вас"
 
-#: core/schemas/transfer.py:525
+#: core/schemas/transfer.py:672
+#, python-format
+msgid "Transfer #%(id)s is confirmed without payment and waiting for a driver"
+msgstr "Трансфер №%(id)s подтверждён без оплаты и ожидает водителя"
+
+#: core/schemas/transfer.py:732
 #, python-format
 msgid "Transfer #%(id)s was assigned to you"
 msgstr "Вам назначен трансфер №%(id)s"
 
-#: core/schemas/transfer.py:588
+#: core/schemas/transfer.py:798
 msgid "Transfer Status Updated"
 msgstr "Статус трансфера обновлён"
 
-#: core/schemas/transfer.py:589
+#: core/schemas/transfer.py:799
 #, python-format
 msgid "Transfer #%(id)s status was updated"
 msgstr "Статус трансфера №%(id)s обновлён"
 
-#: core/schemas/transfer.py:624
+#: core/schemas/transfer.py:839
 msgid "Transfer Cancelled"
 msgstr "Трансфер отменён"
 
-#: core/schemas/transfer.py:625
+#: core/schemas/transfer.py:840
 #, python-format
 msgid "Transfer #%(id)s was cancelled"
 msgstr "Трансфер №%(id)s отменён"
 
-#: core/schemas/user.py:61 tests.py:16
+#: core/schemas/user.py:61
 msgid "Verification Code"
 msgstr "Код подтверждения"
 
