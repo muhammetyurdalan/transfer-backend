@@ -170,7 +170,7 @@ class Mutation:
         session = start_guest_session(info, transfer.customer, transfer)
         return outputs.GuestSession(
             session=session, transfer_id=transfer.pk,
-            customer_id=transfer.customer_id
+            customer_id=transfer.customer_id, is_claimed=transfer.is_claimed
         )
 
     @sb.mutation(description='GUEST, ADMIN, STAFF')
@@ -195,6 +195,7 @@ class Mutation:
             session=session,
             transfer_id=transfer.pk,
             customer_id=transfer.customer_id,
+            is_claimed=transfer.is_claimed,
             access_token=utils.get_access_token(transfer)
         )
 

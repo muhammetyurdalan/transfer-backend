@@ -581,6 +581,10 @@ class GuestSession:
     )
     transfer_id: sb.ID
     customer_id: sb.ID
+    is_claimed: bool = sb.field(
+        description="Shown in the customer's account (false: a registered "
+        "email's booking until claimTransfer)"
+    )
     access_token: Optional[str] = sb.field(
         default=None,
         description='Booking link token (createGuestTransfer, '
