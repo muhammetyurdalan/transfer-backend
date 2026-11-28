@@ -1,5 +1,6 @@
 from django.core.exceptions import FieldDoesNotExist
 from django.core.files.uploadedfile import UploadedFile
+from graphql import GraphQLNonNull
 from json import load
 from pathlib import Path
 from strawberry import Schema
@@ -9,10 +10,12 @@ from strawberry.tools import merge_types
 from strawberry.utils.str_converters import to_snake_case
 from strawberry_django.optimizer import DjangoOptimizerExtension
 from core.decorators import get_user
+from core.models import User
 from core.schemas.city import Query as city_query
 from core.schemas.city import Mutation as city_mutation
 from core.schemas.district import Query as district_query
 from core.schemas.district import Mutation as district_mutation
+from core.schemas.guest import Mutation as guest_mutation
 from core.schemas.invitation import Query as invitation_query
 from core.schemas.invitation import Mutation as invitation_mutation
 from core.schemas.message import Query as message_query
@@ -56,6 +59,7 @@ queries = (
 mutations = (
     city_mutation,
     district_mutation,
+    guest_mutation,
     invitation_mutation,
     message_mutation,
     notification_mutation,
@@ -83,11 +87,27 @@ with open(Path(__file__).resolve().parent / 'permissions.json') as file:
 MAX_QUERY_DEPTH = 10
 
 
+def hides_account(user, root, info):
+    """
+    A guest session (booking link) on a registered customer's transfer must
+    not reveal the account: its name and contact stay hidden from whoever
+    has the link. Only nullable fields are hidden (id, __typename stay).
+    """
+    if getattr(user, 'guest_transfer_id', None) is None or user.is_guest:
+        return False
+    if not (isinstance(root, User) and root.pk == user.pk):
+        return False
+    is_meta = info.field_name.startswith('__')
+    return not is_meta and not isinstance(info.return_type, GraphQLNonNull)
+
+
 class PermissionExtension(SchemaExtension):
     def resolve(self, _next, root, info, *args, **kwargs):
         user = get_user(info.context)
         model_name = root.__class__.__name__
         field_name = to_snake_case(info.field_name)
+        if hides_account(user, root, info):
+            return None
         permissions = PERMISSIONS.get(model_name, {}).get(field_name, [])
         if not permissions:
             pass

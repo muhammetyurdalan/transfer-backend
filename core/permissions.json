@@ -64,5 +64,25 @@
             "STAFF",
             "OPERATOR"
         ]
+    },
+    "Transfer": {
+        "payer_name": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR",
+            "CUSTOMER"
+        ],
+        "payer_email": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR",
+            "CUSTOMER"
+        ],
+        "payer_phone": [
+            "ADMIN",
+            "STAFF",
+            "OPERATOR",
+            "CUSTOMER"
+        ]
     }
 }

@@ -82,10 +82,12 @@ def get_transaction(transfer, category, order_amount, **kwargs):
 
 # Payment
 
-async def get_payment_link(transfer):
+async def get_payment_link(transfer, guest=False):
     """
     Payment link for transfer.price (customer_price + cancel_price).
     Any previous link is expired first, so only the latest choice is payable.
+    guest (a guest session pays): the payment returns to the booking page
+    (no token in the url) and no stored cards, the email is not verified.
     """
     await expire_payment_link(transfer)
     transaction = get_transaction(transfer, Category.PAYMENT, transfer.price)
@@ -97,6 +99,10 @@ async def get_payment_link(transfer):
         'customer': utils.get_dict(transfer.customer),
         'transaction': utils.get_dict(transaction),
     }
+    if guest:
+        booking_url = f'{settings.FRONTEND_URL}/booking/{transfer.pk}'
+        data['success_url'] = data['cancel_url'] = booking_url
+        data['stored_cards'] = False
     response = await async_post('/createPaymentLink', data)
     transfer.psp_data['psp'] = response['psp']
     transfer.psp_data['payment_id'] = response['payment_id']
@@ -183,7 +189,12 @@ async def notify_transfer_accepted(transfer, body, sender_id=None):
         sender_id=sender_id,
         email_data=email_data
     )
-    await utils.send_email_to(transfer.customer, email_data)
+    customer_email_data = email_data
+    if transfer.is_guest_booking:
+        # Only the customer's copy carries the booking link
+        link = utils.get_booking_link(transfer)
+        customer_email_data = {**email_data, 'link': link}
+    await utils.send_email_to(transfer.customer, customer_email_data)
     args = (sender_id, Action.TRANSFER_ACCEPTED, receiver_ids)
     await utils.broadcast(*args, transfer_id=str(transfer.id))
 

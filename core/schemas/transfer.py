@@ -5,6 +5,7 @@ from django.db.models.aggregates import Count
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.translation import activate, gettext_noop
+from hmac import compare_digest
 from json import dumps
 import strawberry as sb
 import strawberry_django as sbd
@@ -13,7 +14,7 @@ from strawberry_django.pagination import OffsetPaginationInput
 from typing import List, Optional
 from core import enums, inputs, models, outputs, psp, utils
 from core.decorators import permission_required
-from core.ratelimit import check_rate_limit
+from core.ratelimit import check_key_limit, check_rate_limit
 
 
 User = utils.User
@@ -99,8 +100,8 @@ async def get_vehicle_options(transfer):
 
 @sb.type
 class Query:
-    @sbd.field(description='ALL')
-    @permission_required('ALL')
+    @sbd.field(description='ALL, GUEST')
+    @permission_required('ALL', 'GUEST')
     async def transfer(
         root, info: Info,
         id: sb.ID
@@ -130,8 +131,8 @@ class Query:
             transfers = sbd.pagination.apply(pagination, transfers)
         return outputs.TransfersPaginated(transfers=transfers, count=count)
 
-    @sbd.field(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
-    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
+    @sbd.field(description='CUSTOMER, OPERATOR, ADMIN, STAFF, GUEST')
+    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF', 'GUEST')
     async def vehicle_options(
         root, info: Info,
         transfer_id: sb.ID
@@ -357,6 +358,53 @@ async def set_vehicle_selection(transfer, category_id, vehicle_count, refund_opt
     transfer.currency = category.currency
 
 
+async def prepare_new_transfer(transfer, data):
+    """
+    Checks a new transfer (data: CreateTransfer, passenger already set),
+    sets its districts, state, operator and the vehicle choice. Not saved.
+    """
+    check_transfer(transfer)
+    check_passenger(transfer)
+    check_pickup_time(transfer.pickup_time)
+    check_legs(data.legs)
+    await set_districts(transfer, data)
+    if data.vehicle_category_id:
+        await set_vehicle_selection(
+            transfer, data.vehicle_category_id, data.vehicle_count,
+            data.refund_option
+        )
+
+
+async def save_new_transfer(transfer, data):
+    await transfer.asave()
+    await set_legs(transfer, data.legs)
+
+
+async def check_confirm_code(transfer, data):
+    """
+    A guest session confirms without payment only with the code emailed by
+    sendConfirmCode (ERR065 without it, wrong or expired ERR004/ERR009),
+    GUEST_CODE_ATTEMPTS tries per code lifetime (ERR056). ADMIN_CODE (when
+    set) passes too, with a secret of this transfer.
+    """
+    assert data.code_secret and data.code, dumps({'code': 'ERR065'})
+    attempts = settings.GUEST_CODE_ATTEMPTS
+    window = settings.CODE_EXPIRE_SECONDS
+    await check_key_limit(f'guest_code:{transfer.pk}', attempts, window)
+    decoded_data = utils.decode_secret(data.code_secret)
+    expected = str(decoded_data.get('code', ''))
+    valid = (
+        decoded_data.get('purpose') == 'guest_confirm'
+        and decoded_data.get('tid') == str(transfer.pk)
+        and (
+            compare_digest(expected, data.code)
+            or bool(settings.ADMIN_CODE)
+            and compare_digest(data.code, settings.ADMIN_CODE)
+        )
+    )
+    assert valid, dumps({'code': 'ERR004'})
+
+
 def check_pickup_time(pickup_time):
     assert pickup_time > timezone.now(), dumps({'code': 'ERR016'})
 
@@ -523,18 +571,8 @@ class Mutation:
         ignored = IGNORED_CREATE_FIELDS
         utils.set_attributes(transfer, data, ignored=ignored, set_nulls=False)
         set_default_passenger(transfer, user)
-        check_transfer(transfer)
-        check_passenger(transfer)
-        check_pickup_time(transfer.pickup_time)
-        check_legs(data.legs)
-        await set_districts(transfer, data)
-        if data.vehicle_category_id:
-            await set_vehicle_selection(
-                transfer, data.vehicle_category_id, data.vehicle_count,
-                data.refund_option
-            )
-        await transfer.asave()
-        await set_legs(transfer, data.legs)
+        await prepare_new_transfer(transfer, data)
+        await save_new_transfer(transfer, data)
         activate(user.language)
         vehicle_options = await get_vehicle_options(transfer)
         return outputs.TransferResponse(
@@ -542,8 +580,8 @@ class Mutation:
             vehicle_options=vehicle_options
         )
 
-    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
-    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
+    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF, GUEST')
+    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF', 'GUEST')
     async def update_transfer(
         root, info: Info,
         data: inputs.UpdateTransfer
@@ -595,8 +633,8 @@ class Mutation:
             vehicle_options=vehicle_options
         )
 
-    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
-    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
+    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF, GUEST')
+    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF', 'GUEST')
     async def pay_transfer(
         root, info: Info,
         data: inputs.PayTransfer
@@ -623,15 +661,16 @@ class Mutation:
             transfer, data.vehicle_category_id, data.vehicle_count,
             data.refund_option
         )
-        await psp.get_payment_link(transfer)
+        guest = utils.get_guest_transfer_id(user) is not None
+        await psp.get_payment_link(transfer, guest=guest)
         await transfer.asave()
         return get_payment_response(
             transfer.psp_data['payment_link'],
             transfer.psp_data['payment_link_expire_time']
         )
 
-    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
-    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
+    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF, GUEST')
+    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF', 'GUEST')
     async def confirm_transfer(
         root, info: Info,
         data: inputs.ConfirmTransfer
@@ -642,11 +681,14 @@ class Mutation:
         (no UNCONDITIONAL refund, ERR055), any open payment link is expired,
         the transfer becomes ACCEPTED with isOfflinePayment (the fare is
         collected outside the app) and operators are notified like a paid one.
+        A guest session needs the code of sendConfirmCode (codeSecret, code).
         """
         user = info.context['user']
         expand = ['customer', 'state']
         transfer = await get_transfer(user, data.id, EDITABLE_STATUSES, expand)
         assert not payment_enabled(transfer), dumps({'code': 'ERR061'})
+        if utils.get_guest_transfer_id(user) is not None:
+            await check_confirm_code(transfer, data)
         check_pickup_time(transfer.pickup_time)
         set_default_passenger(transfer, transfer.customer)
         check_passenger(transfer, required=PASSENGER_FIELDS)
@@ -803,8 +845,8 @@ class Mutation:
         await utils.broadcast(*args, transfer_id=str(transfer.id))
         return transfer
 
-    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF')
-    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF')
+    @sb.mutation(description='CUSTOMER, OPERATOR, ADMIN, STAFF, GUEST')
+    @permission_required('CUSTOMER', 'OPERATOR', 'ADMIN', 'STAFF', 'GUEST')
     async def cancel_transfer(
         root, info: Info,
         data: inputs.CancelTransfer

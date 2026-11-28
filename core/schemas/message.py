@@ -32,8 +32,8 @@ async def get_visible_messages(user, transfer):
 
 @sb.type
 class Query:
-    @sbd.field(description='ALL')
-    @permission_required('ALL')
+    @sbd.field(description='ALL, GUEST')
+    @permission_required('ALL', 'GUEST')
     async def messages(
         root, info: Info,
         transfer_id: sb.ID,
@@ -165,8 +165,10 @@ async def advance_messages(user, messages, status):
 
 @sb.type
 class Mutation:
-    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
-    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF, GUEST')
+    @permission_required(
+        'CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF', 'GUEST'
+    )
     async def send_message(
         root, info: Info,
         data: inputs.SendMessage
@@ -197,8 +199,10 @@ class Mutation:
         await utils.broadcast(*args, **get_message_payload(message))
         return message
 
-    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
-    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF, GUEST')
+    @permission_required(
+        'CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF', 'GUEST'
+    )
     async def update_message(
         root, info: Info,
         data: inputs.UpdateMessage
@@ -206,6 +210,7 @@ class Mutation:
         user = info.context['user']
         message = await manager.filter(pk=data.id, sender=user).afirst()
         assert message, dumps({'code': 'ERR001'})
+        utils.check_guest_scope(user, message.transfer_id)
         assert not message.is_deleted, dumps({'code': 'ERR021'})
         editable = not (message.file or message.location)
         assert editable, dumps({'code': 'ERR022'})
@@ -221,13 +226,16 @@ class Mutation:
         await utils.broadcast(*args, **get_message_payload(message))
         return message
 
-    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
-    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF, GUEST')
+    @permission_required(
+        'CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF', 'GUEST'
+    )
     async def delete_message(root, info: Info, id: sb.ID) -> outputs.Message:
         user = info.context['user']
         messages = manager.filter(pk=id, sender=user, is_deleted=False)
         message = await messages.afirst()
         assert message, dumps({'code': 'ERR001'})
+        utils.check_guest_scope(user, message.transfer_id)
         message.is_deleted = True
         message.deleted_time = timezone.now()
         message.deleted_by = user
@@ -245,8 +253,10 @@ class Mutation:
         await utils.broadcast(*args, **kwargs)
         return message
 
-    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
-    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF, GUEST')
+    @permission_required(
+        'CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF', 'GUEST'
+    )
     async def see_messages(
         root, info: Info,
         transfer_id: sb.ID,
@@ -270,8 +280,10 @@ class Mutation:
         await see_message_notifications(user.id, transfer)
         return outputs.SuccessResponse(success=True)
 
-    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
-    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF, GUEST')
+    @permission_required(
+        'CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF', 'GUEST'
+    )
     async def deliver_messages(
         root, info: Info,
         transfer_id: Optional[sb.ID] = None
@@ -287,8 +299,10 @@ class Mutation:
         await advance_messages(user, messages, MessageStatus.DELIVERED)
         return outputs.SuccessResponse(success=True)
 
-    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF')
-    @permission_required('CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF')
+    @sb.mutation(description='CUSTOMER, DRIVER, OPERATOR, ADMIN, STAFF, GUEST')
+    @permission_required(
+        'CUSTOMER', 'DRIVER', 'OPERATOR', 'ADMIN', 'STAFF', 'GUEST'
+    )
     async def react_message(
         root, info: Info,
         id: sb.ID,
