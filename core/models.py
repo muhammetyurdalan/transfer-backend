@@ -116,6 +116,16 @@ class User(AbstractBaseUser):
         default=enums.VerifyStatus.PENDING
     )
     is_active = models.BooleanField(default=True)
+    is_guest = models.BooleanField(
+        default=False,
+        help_text='Created by a booking without an account: no password, '
+        'email not verified, no session. Signing up, social sign in or a '
+        'password reset claims it'
+    )
+    token_version = models.PositiveIntegerField(
+        default=0,
+        help_text='Tokens carry it, raising it signs out every session'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     districts = models.ManyToManyField(District, related_name='users')
 
@@ -391,6 +401,20 @@ class Transfer(models.Model):
         'off), the fare is collected outside the app'
     )
     psp_data = models.JSONField(default=dict, encoder=DjangoJSONEncoder)
+    access_nonce = models.CharField(
+        max_length=32, blank=True,
+        help_text='Booked without an account: the booking link token is '
+        'HMAC(SECRET_KEY, id:nonce). A new nonce revokes the link'
+    )
+    is_claimed = models.BooleanField(
+        default=True,
+        help_text="False: booked without an account with a registered "
+        "customer's email, hidden from the customer until they claim it"
+    )
+    payer_name = models.CharField(max_length=100, blank=True)
+    payer_email = models.EmailField(max_length=100, blank=True)
+    payer_phone = models.CharField(max_length=20, blank=True)
+    terms_accepted_at = models.DateTimeField(blank=True, null=True)
     cancellation_reason = models.ForeignKey(
         Reason,
         related_name='transfers',
@@ -425,6 +449,10 @@ class Transfer(models.Model):
     @property
     def has_unconditional_refund(self):
         return self.cancel_price > ZERO
+
+    @property
+    def is_guest_booking(self):
+        return bool(self.access_nonce)
 
     def save(self, *args, **kwargs):
         self.end_time = self.pickup_time + timedelta(minutes=self.duration)

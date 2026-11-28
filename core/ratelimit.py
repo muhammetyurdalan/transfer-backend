@@ -34,8 +34,17 @@ async def check_rate_limit(info, scope, limit, window):
     Redis outage must not break booking.
     """
     ip = get_client_ip(info.context) or 'unknown'
+    await check_key_limit(f'{scope}:{ip}', limit, window)
+
+
+async def check_key_limit(key, limit, window):
+    """
+    Fixed window counter of any key (e.g. a transfer's code attempts): at
+    most `limit` calls in `window` seconds, otherwise ERR056. An unreachable
+    cache allows the call (logged).
+    """
     bucket = int(time() // window)
-    key = f'ratelimit:{scope}:{ip}:{bucket}'
+    key = f'ratelimit:{key}:{bucket}'
     try:
         if await cache.aadd(key, 1, timeout=window):
             count = 1

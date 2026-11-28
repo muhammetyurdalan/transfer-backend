@@ -336,6 +336,16 @@ class CreateTransfer:
 
 
 @sb.input
+class GuestContact:
+    """The payer of a booking without an account (createGuestTransfer)."""
+    first_name: str = required('50 chars max')
+    last_name: str = required('50 chars max')
+    email: str = required()
+    phone: str = required('20 chars max')
+    accept_terms: bool = required('must be true')
+
+
+@sb.input
 class QuoteTransfer:
     """Only what decides the vehicle options and prices (see CreateTransfer)."""
     pickup_district_name: str = required('at least one must be found')
@@ -419,6 +429,10 @@ class ConfirmTransfer:
     refund_option: Optional[enums.RefundOption] = optional(
         'default STANDARD. UNCONDITIONAL needs an online payment (ERR055)'
     )
+    code_secret: Optional[str] = optional(
+        'guest session: secret of sendConfirmCode (ERR065 without it)'
+    )
+    code: Optional[str] = optional('guest session: the emailed code (ERR004)')
 
 
 @sb.input

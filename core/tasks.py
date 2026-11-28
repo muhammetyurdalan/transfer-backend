@@ -1,6 +1,8 @@
 from asgiref.sync import async_to_sync as a2s
 from celery import shared_task
+from datetime import timedelta
 from django.conf import settings
+from django.db.models import Q
 from django.utils import timezone
 from fcm_django.models import FCMDevice
 from firebase_admin.messaging import Message, Notification
@@ -71,11 +73,15 @@ def run_hourly_tasks():
 
 async def check_transfers_expiring():
     """
-    PENDING (unpaid) transfers whose pickup time has passed become EXPIRED
-    and their payment links are expired. Returns the expired transfer ids.
+    PENDING (unpaid) transfers whose pickup time has passed, and guest
+    bookings (without an account) unpaid for GUEST_PENDING_HOURS, become
+    EXPIRED and their payment links are expired. Returns the expired ids.
     """
+    now = timezone.now()
+    guest_deadline = now - timedelta(hours=settings.GUEST_PENDING_HOURS)
+    stale_guest = Q(created_at__lte=guest_deadline) & ~Q(access_nonce='')
     transfers = models.Transfer.objects.filter(
-        status=Status.PENDING, pickup_time__lte=timezone.now()
+        Q(pickup_time__lte=now) | stale_guest, status=Status.PENDING
     )
     expired_ids = []
     async for transfer in transfers.only('id', 'psp_data'):

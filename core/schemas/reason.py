@@ -8,7 +8,7 @@ from strawberry import Info
 from strawberry.exceptions import StrawberryGraphQLError as Error
 from typing import List, Optional
 from core import enums, inputs, models, outputs, utils
-from core.decorators import permission_required
+from core.decorators import get_public_user, permission_required
 
 
 manager = models.Reason.objects
@@ -48,8 +48,7 @@ async def check_unique_code(code, exclude_id=None):
 
 @sb.type
 class Query:
-    @sbd.field(description='ALL')
-    @permission_required('ALL')
+    @sbd.field(description='Public (inactive ones for ADMIN, STAFF)')
     async def reasons(
         root, info: Info,
         category: Optional[enums.ReasonCategory] = sb.UNSET,
@@ -58,13 +57,15 @@ class Query:
         language: Optional[enums.Language] = sb.UNSET
     ) -> List[outputs.Reason]:
         """
-        `description` is in `language`, or in the user's language. Inactive
-        reasons only for ADMIN/STAFF (`isActive` filters them).
+        Public (bookings without an account list the cancellation reasons).
+        `description` is in `language`, or in the user's language (en without
+        a token). Inactive reasons only for ADMIN/STAFF (`isActive` filters
+        them).
         """
-        user = info.context['user']
-        activate(language or user.language)
+        user = await get_public_user(info)
+        activate(language or (user and user.language) or enums.Language.EN)
         reasons = manager.all()
-        if user.role not in utils.STAFF_ROLES:
+        if not (user and user.role in utils.STAFF_ROLES):
             reasons = reasons.filter(is_active=True)
         elif is_active is not None and is_active is not sb.UNSET:
             reasons = reasons.filter(is_active=is_active)

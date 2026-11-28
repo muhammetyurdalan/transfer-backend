@@ -9,7 +9,11 @@ from django.db.models import DecimalField, Exists, OuterRef, Q, Subquery, Sum
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.utils.translation import activate, gettext
+from base64 import urlsafe_b64encode
+from hashlib import sha256
+from hmac import compare_digest, new as hmac_new
 from json import dumps
+from secrets import token_hex
 from jwt import encode, decode, DecodeError, ExpiredSignatureError
 from strawberry.exceptions import StrawberryGraphQLError as Error
 from core import enums, models
@@ -169,6 +173,7 @@ async def get_receiver_ids(sender_id, transfer):
 
 async def check_messaging_access(user, transfer):
     '''ADMIN/STAFF can join every transfer's messaging.'''
+    check_guest_scope(user, transfer.pk)
     if user.role not in STAFF_ROLES:
         await check_participant(user, transfer)
 
@@ -188,6 +193,8 @@ async def get_messaging_receiver_ids(sender_id, transfer):
 
 def get_transfers(user, expand=()):
     transfers = models.Transfer.objects.select_related(*expand).all()
+    if (guest_transfer_id := get_guest_transfer_id(user)) is not None:
+        return transfers.filter(pk=guest_transfer_id, customer=user)
     if user.role in STAFF_ROLES:
         return transfers
     if user.role == enums.Role.OPERATOR:
@@ -197,7 +204,8 @@ def get_transfers(user, expand=()):
             transfer_id=OuterRef('pk'), driver=user
         )
         return transfers.filter(Exists(assignments))
-    return transfers.filter(customer=user)
+    # Booked with the customer's email without signing in: hidden until claimed
+    return transfers.filter(customer=user, is_claimed=True)
 
 
 def get_transactions(user):
@@ -218,6 +226,8 @@ def get_transactions(user):
             output_field=DecimalField(**models.DECIMAL_10)
         )
     )
+    if (guest_transfer_id := get_guest_transfer_id(user)) is not None:
+        return transactions.filter(user=user, transfer_id=guest_transfer_id)
     if user.role in STAFF_ROLES:
         return transactions
     if user.role == enums.Role.OPERATOR:
@@ -248,7 +258,10 @@ async def create_notifications(
     data=None,
     sender_id=None
 ):
-    receivers = User.objects.filter(id__in=receiver_ids, is_active=True)
+    # Guests (no account to sign in) get no in-app notifications or pushes
+    receivers = User.objects.filter(
+        id__in=receiver_ids, is_active=True, is_guest=False
+    )
     receiver_ids = [
         receiver_id async for receiver_id in
         receivers.values_list('id', flat=True)
@@ -340,10 +353,67 @@ def normalize_email(email):
     return User.objects.normalize_email(email).lower()
 
 
-def create_token(email):
+def create_token(email, token_version=0):
+    """Session token, User.token_version (tv) revokes it when raised."""
     exp = timezone.now() + timedelta(days=settings.JWT_EXPIRE_DAYS)
-    payload = {'email': email, 'exp': exp}
+    payload = {'email': email, 'tv': token_version, 'exp': exp}
     return encode(payload, settings.JWT_SECRET, settings.JWT_ALGORITHM)
+
+
+# Booking without an account
+
+def new_access_nonce():
+    return token_hex(16)
+
+
+def get_access_token(transfer):
+    """
+    The booking link token of a guest booking: HMAC(SECRET_KEY, id:nonce),
+    nothing to store but the nonce (a database leak alone gives no link).
+    """
+    message = f'{transfer.pk}:{transfer.access_nonce}'.encode()
+    digest = hmac_new(settings.SECRET_KEY.encode(), message, sha256).digest()
+    return urlsafe_b64encode(digest).decode().rstrip('=')
+
+
+def check_access_token(transfer, token):
+    valid = bool(transfer and transfer.access_nonce and token)
+    valid = valid and compare_digest(get_access_token(transfer), token)
+    assert valid, dumps({'code': 'ERR063'})
+
+
+def get_booking_link(transfer):
+    """Guest booking page, the token is in the fragment (never sent)."""
+    token = get_access_token(transfer)
+    return f'{settings.FRONTEND_URL}/booking/{transfer.pk}#{token}'
+
+
+def create_guest_token(user, transfer):
+    """
+    Short lived session limited to one transfer (scope guest). an: the
+    nonce's prefix, a new booking link (new nonce) revokes it.
+    """
+    hours = settings.GUEST_SESSION_HOURS
+    payload = {
+        'email': user.email,
+        'tv': user.token_version,
+        'scope': 'guest',
+        'tid': str(transfer.pk),
+        'an': transfer.access_nonce[:8],
+        'exp': timezone.now() + timedelta(hours=hours),
+    }
+    return encode(payload, settings.JWT_SECRET, settings.JWT_ALGORITHM)
+
+
+def get_guest_transfer_id(user):
+    """The only transfer of a guest session, None for a full session."""
+    return getattr(user, 'guest_transfer_id', None)
+
+
+def check_guest_scope(user, transfer_id):
+    guest_transfer_id = get_guest_transfer_id(user)
+    valid = guest_transfer_id is None or str(transfer_id) == guest_transfer_id
+    assert valid, dumps({'code': 'ERR001'})
 
 
 def encode_secret(payload):

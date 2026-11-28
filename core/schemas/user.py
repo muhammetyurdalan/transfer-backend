@@ -98,6 +98,16 @@ async def accept_invitations(user):
     )
 
 
+def claim_guest(user):
+    """
+    A guest (booking without an account) proved its email: it becomes a
+    regular user and its guest sessions are revoked.
+    """
+    if user.pk and user.is_guest:
+        user.is_guest = False
+        user.token_version += 1
+
+
 async def sign_up(info, data, role):
     decoded_data = get_validated_data(data.secret)
     email = decoded_data['email']
@@ -107,8 +117,13 @@ async def sign_up(info, data, role):
         invitation = await get_pending_invitation(decoded_data)
         assert invitation, dumps({'code': 'ERR044'})
     user = await manager.filter(email=email).afirst()
-    assert not (user and user.is_active), dumps({'code': 'ERR011'})
+    if user and user.is_guest:
+        # A guest's bookings are a customer's, it can't become a driver
+        assert role == enums.Role.CUSTOMER, dumps({'code': 'ERR011'})
+    taken = user and user.is_active and not user.is_guest
+    assert not taken, dumps({'code': 'ERR011'})
     user = user or User(email=email)
+    claim_guest(user)
     ignored = ['secret', 'password', 'role']
     utils.set_attributes(user, data, ignored=ignored)
     user.phone = utils.check_phone(data.phone)
@@ -122,7 +137,7 @@ async def sign_up(info, data, role):
     await user.asave()
     if role == enums.Role.CUSTOMER:
         await accept_invitations(user)
-    token = utils.create_token(user.email)
+    token = utils.create_token(user.email, user.token_version)
     append_user(info.context, user)
     return outputs.SignInResponse(user=user, token=token)
 
@@ -148,6 +163,8 @@ class Mutation:
     ) -> outputs.CodeResponse:
         email = utils.normalize_email(data.email)
         users = manager.filter(email=email, is_active=True)
+        if not data.is_user:
+            users = users.filter(is_guest=False)
         user_exists = await users.aexists()
         if data.is_user:
             assert user_exists, dumps({'code': 'ERR010'})
@@ -203,8 +220,10 @@ class Mutation:
         assert district_ids or not is_operator, dumps({'code': 'ERR030'})
         email = utils.normalize_email(data.email)
         user = await manager.filter(email=email).afirst()
-        assert not (user and user.is_active), dumps({'code': 'ERR011'})
+        taken = user and user.is_active and not user.is_guest
+        assert not taken, dumps({'code': 'ERR011'})
         user = user or User(email=email)
+        claim_guest(user)
         ignored = ['email', 'password', 'language', 'district_ids']
         utils.set_attributes(user, data, ignored=ignored)
         user.phone = utils.check_phone(data.phone)
@@ -227,7 +246,7 @@ class Mutation:
         assert user, dumps({'code': 'ERR010'})
         password_valid = await s2a(user.check_password)(data.password)
         assert password_valid, dumps({'code': 'ERR059'})
-        token = utils.create_token(user.email)
+        token = utils.create_token(user.email, user.token_version)
         append_user(info.context, user)
         return outputs.SignInResponse(user=user, token=token)
 
@@ -245,6 +264,9 @@ class Mutation:
         user = await manager.filter(email=email).afirst()
         if user:
             assert user.is_active, dumps({'code': 'ERR010'})
+            if user.is_guest:
+                claim_guest(user)
+                await user.asave(update_fields=['is_guest', 'token_version'])
         else:
             language = get_language()
             if language not in enums.Language.values:
@@ -259,7 +281,7 @@ class Mutation:
             user.set_unusable_password()
             await user.asave()
             await accept_invitations(user)
-        token = utils.create_token(user.email)
+        token = utils.create_token(user.email, user.token_version)
         append_user(info.context, user)
         return outputs.SignInResponse(user=user, token=token)
 
@@ -274,6 +296,9 @@ class Mutation:
         assert user, dumps({'code': 'ERR010'})
         check_password(data.password, user)
         user.set_password(data.password)
+        # A guest proved its email; every session (a stolen one too) ends
+        claim_guest(user)
+        user.token_version += 1
         await user.asave()
         return outputs.SuccessResponse(success=True)
 
@@ -350,12 +375,13 @@ class Mutation:
 
 @sb.type
 class Subscription:
-    @sb.subscription(description='ALL')
-    @permission_required('ALL')
+    @sb.subscription(description='ALL, GUEST (its transfer\'s events only)')
+    @permission_required('ALL', 'GUEST')
     async def subscribe(
         root, info: Info
     ) -> AsyncGenerator[outputs.SubscriptionResponse, None]:
         user = info.context['user']
+        guest_transfer_id = utils.get_guest_transfer_id(user)
         ws = info.context['ws']
         group_id = utils.get_group_id(user.id)
         await ws.channel_layer.group_add(group_id, ws.channel_name)
@@ -365,6 +391,11 @@ class Subscription:
         async with ws_consumer as consumer:
             async for data in consumer:
                 response = outputs.SubscriptionResponse(**data['message'])
+                # The user group also gets the user's other transfers' events
+                if guest_transfer_id is not None and (
+                    response.transfer_id != guest_transfer_id
+                ):
+                    continue
                 yield response
                 if response.action == enums.Action.USER_DEACTIVATED:
                     break

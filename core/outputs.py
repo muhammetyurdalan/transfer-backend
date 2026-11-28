@@ -498,7 +498,10 @@ class TransferDriver:
 
 @sbd.type(
     models.Transfer,
-    exclude=['messages', 'through_messages', 'transactions', 'psp_data']
+    exclude=[
+        'messages', 'through_messages', 'transactions', 'psp_data',
+        'access_nonce'
+    ]
 )
 class Transfer:
     customer_id: sb.ID
@@ -520,6 +523,9 @@ class Transfer:
     price: Optional[Decimal] = sbd.field(
         only=['customer_price', 'cancel_price'],
         description='Paid total: customerPrice + cancelPrice'
+    )
+    is_guest_booking: bool = sbd.field(
+        only=['access_nonce'], description='Booked without an account'
     )
     cancellation_reason_id: Optional[sb.ID]
     cancellation_reason: Optional[Reason] = sbd.field(
@@ -565,6 +571,29 @@ class QuoteResponse:
     state: State = sb.field(
         description='State of the route: multiple vehicles and refund options'
     )
+
+
+@sb.type
+class GuestSession:
+    session: str = sb.field(
+        description='Authorization token limited to the transfer (GUEST), '
+        'valid for GUEST_SESSION_HOURS; guestSession renews it'
+    )
+    transfer_id: sb.ID
+    customer_id: sb.ID
+    access_token: Optional[str] = sb.field(
+        default=None,
+        description='Booking link token (createGuestTransfer, '
+        'renewBookingLink), the link is /booking/<id>#<token>'
+    )
+
+
+@sb.type
+class GuestBookingResponse:
+    transfer: Transfer
+    vehicle_options: List[VehicleOption]
+    access_token: str = sb.field(description='Booking link token')
+    session: str = sb.field(description='See GuestSession.session')
 
 
 @sb.type

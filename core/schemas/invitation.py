@@ -123,7 +123,9 @@ class Mutation:
             validate_email(email)
         except ValidationError:
             raise Error(dumps({'code': 'ERR030'}))
-        users = utils.User.objects.filter(email=email, is_active=True)
+        users = utils.User.objects.filter(
+            email=email, is_active=True, is_guest=False
+        )
         assert not await users.aexists(), dumps({'code': 'ERR011'})
         language = data.language or sender.language or enums.Language.EN
         expire_days = settings.INVITATION_EXPIRE_DAYS

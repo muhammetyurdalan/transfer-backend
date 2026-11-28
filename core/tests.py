@@ -950,8 +950,9 @@ class ReasonTests(GraphQLTestCase):
         self.assertEqual(self.ok(result, 'reasons')[0]['description'], 'No driver')
         result = await self.execute(REASONS, {'code': 'operator_no_driver'}, self.customer)
         self.assertEqual(len(self.ok(result, 'reasons')), 1)
-        result = await self.execute(REASONS)
-        self.assertEqual(self.error_code(result), 'ERR001')
+        # Public: without a token (guest bookings), active ones in en
+        result = await self.execute(REASONS, {'code': 'operator_no_driver'})
+        self.assertEqual(self.ok(result, 'reasons')[0]['description'], 'No driver')
 
     async def test_inactive_only_for_staff(self):
         reason = self.ok(await self.create_reason(isActive=False), 'createReason')
@@ -3433,3 +3434,386 @@ class SubscriptionTests(GraphQLTestCase):
             'action': 'MESSAGE_STATUS', 'transferId': str(transfer.id),
             'messageIds': [pk], 'messageStatus': 'SEEN'
         })
+
+
+CREATE_GUEST_TRANSFER = '''
+mutation($data: CreateTransfer!, $contact: GuestContact!) {
+  createGuestTransfer(data: $data, contact: $contact, language: TR) {
+    transfer {
+      id status passengerName passengerPhone payerName payerEmail payerPhone
+      isGuestBooking customer { id name email phone }
+    }
+    vehicleOptions { count }
+    accessToken session
+  }
+}
+'''
+GUEST_SESSION = '''
+mutation($transferId: ID!, $token: String!) {
+  guestSession(transferId: $transferId, token: $token) { session transferId }
+}
+'''
+RENEW_BOOKING_LINK = '''
+mutation($id: ID!) { renewBookingLink(id: $id) { session accessToken } }
+'''
+CLAIM_TRANSFER = '''
+mutation($transferId: ID!, $token: String!) {
+  claimTransfer(transferId: $transferId, token: $token) { id }
+}
+'''
+SEND_CONFIRM_CODE = '''
+mutation($transferId: ID!) { sendConfirmCode(transferId: $transferId) { secret } }
+'''
+GUEST_TRANSFER = '''
+query($id: ID!) {
+  transfer(id: $id) { id status payerEmail customer { id name email phone } }
+}
+'''
+
+
+class GuestBookingTests(GraphQLTestCase):
+    """Booking without an account (core/schemas/guest.py)."""
+
+    def contact(self, **kwargs):
+        return {
+            'firstName': 'Grace', 'lastName': 'Hopper',
+            'email': 'Grace@Example.com', 'phone': ' +905559998877 ',
+            'acceptTerms': True, **kwargs
+        }
+
+    async def book(self, contact=None, **kwargs):
+        data = self.transfer_data(**kwargs)
+        variables = {'data': data, 'contact': contact or self.contact()}
+        return await self.execute(CREATE_GUEST_TRANSFER, variables)
+
+    async def booked(self, contact=None, **kwargs):
+        return self.ok(await self.book(contact, **kwargs), 'createGuestTransfer')
+
+    def setUp(self):
+        super().setUp()
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    async def as_token(self, query, variables, token):
+        body = dumps({'query': query, 'variables': variables or {}})
+        response = await self.async_client.post(
+            URL, body, content_type='application/json',
+            headers={'authorization': token}
+        )
+        return loads(response.content)
+
+    async def test_new_email_opens_guest(self):
+        booking = await self.booked(passengerName=None, passengerPhone=None)
+        transfer = booking['transfer']
+        self.assertEqual(transfer['status'], 'PENDING')
+        self.assertTrue(transfer['isGuestBooking'])
+        # Passenger and payer are the contact, the guest sees its own account
+        self.assertEqual(transfer['passengerName'], 'Grace Hopper')
+        self.assertEqual(transfer['passengerPhone'], '+905559998877')
+        self.assertEqual(transfer['payerEmail'], 'grace@example.com')
+        self.assertEqual(transfer['customer']['email'], 'grace@example.com')
+        self.assertTrue(booking['accessToken'] and booking['session'])
+        guest = await User.objects.aget(email='grace@example.com')
+        self.assertTrue(guest.is_guest)
+        self.assertFalse(guest.has_usable_password())
+        self.assertEqual(guest.language, 'tr')
+        # The session reaches the transfer only
+        variables = {'id': transfer['id']}
+        result = await self.as_token(GUEST_TRANSFER, variables, booking['session'])
+        self.assertEqual(self.ok(result, 'transfer')['id'], transfer['id'])
+        for query in (TRANSFERS, '{ user { id } }'):
+            result = await self.as_token(query, {}, booking['session'])
+            self.assertEqual(self.error_code(result), 'ERR001')
+        data = self.transfer_data()
+        result = await self.as_token(CREATE_TRANSFER, {'data': data}, booking['session'])
+        self.assertEqual(self.error_code(result), 'ERR001')
+        # Guests get no in-app notifications
+        await utils.create_notifications([guest.id, self.customer.id], 'T', 'B')
+        self.assertTrue(
+            await models.Notification.objects.filter(user=self.customer).aexists()
+        )
+        self.assertFalse(
+            await models.Notification.objects.filter(user=guest).aexists()
+        )
+
+    async def test_guest_updates_own_booking(self):
+        booking = await self.booked()
+        session = booking['session']
+        data = {'id': booking['transfer']['id'], 'note': 'Window seat'}
+        result = await self.as_token(UPDATE_TRANSFER, {'data': data}, session)
+        self.ok(result, 'updateTransfer')
+        transfer = await models.Transfer.objects.aget(pk=data['id'])
+        self.assertEqual(transfer.note, 'Window seat')
+        # Another transfer is out of the session's scope
+        other = await self.create_transfer()
+        other_id = other['transfer']['id']
+        data = {'id': other_id, 'note': 'Hijack'}
+        result = await self.as_token(UPDATE_TRANSFER, {'data': data}, session)
+        self.assertEqual(self.error_code(result), 'ERR013')
+        other = await models.Transfer.objects.aget(pk=other_id)
+        self.assertNotEqual(other.note, 'Hijack')
+
+    async def test_invalid_contact(self):
+        for contact in (
+            self.contact(acceptTerms=False), self.contact(email='nope'),
+            self.contact(firstName=' ')
+        ):
+            result = await self.book(contact)
+            self.assertEqual(self.error_code(result), 'ERR030')
+        result = await self.book(self.contact(phone=' '))
+        self.assertEqual(self.error_code(result), 'ERR043')
+        # An invalid transfer opens no account
+        result = await self.book(pickupDistrictName='X', dropoffDistrictName='Y')
+        self.assertEqual(self.error_code(result), 'ERR035')
+        self.assertFalse(
+            await User.objects.filter(email='grace@example.com').aexists()
+        )
+
+    async def test_guest_session(self):
+        booking = await self.booked()
+        transfer_id = booking['transfer']['id']
+        variables = {'transferId': transfer_id, 'token': booking['accessToken']}
+        session = self.ok(await self.execute(GUEST_SESSION, variables), 'guestSession')
+        result = await self.as_token(GUEST_TRANSFER, {'id': transfer_id}, session['session'])
+        self.assertEqual(self.ok(result, 'transfer')['id'], transfer_id)
+        for token in ('wrong', ''):
+            variables = {'transferId': transfer_id, 'token': token}
+            result = await self.execute(GUEST_SESSION, variables)
+            self.assertEqual(self.error_code(result), 'ERR063')
+        # Another booking of the same guest is out of this session's scope
+        other = await self.booked()
+        variables = {'id': other['transfer']['id']}
+        result = await self.as_token(GUEST_TRANSFER, variables, booking['session'])
+        self.assertIsNone(self.ok(result, 'transfer'))
+
+    async def test_registered_email_is_hidden_until_claimed(self):
+        contact = self.contact(email='customer@example.com')
+        booking = await self.booked(contact)
+        transfer_id = booking['transfer']['id']
+        transfer = await models.Transfer.objects.aget(pk=transfer_id)
+        self.assertEqual(transfer.customer_id, self.customer.id)
+        self.assertFalse(transfer.is_claimed)
+        # The account is not revealed to whoever has the link
+        self.assertEqual(booking['transfer']['customer'], {
+            'id': str(self.customer.id), 'name': None, 'email': None,
+            'phone': None
+        })
+        self.assertEqual(booking['transfer']['passengerName'], 'Ada Lovelace')
+        # The link's own transfer query (clients ask __typename) works too
+        query = '''
+        query($id: ID!) {
+          transfer(id: $id) { id __typename customer { __typename id name } }
+        }
+        '''
+        result = await self.as_token(query, {'id': transfer_id}, booking['session'])
+        self.assertEqual(self.ok(result, 'transfer')['customer'], {
+            '__typename': 'User', 'id': str(self.customer.id), 'name': None
+        })
+        # Hidden from the customer's panel
+        result = await self.execute(TRANSFERS, {}, self.customer)
+        self.assertEqual(self.ok(result, 'transfers')['count'], 0)
+        # The link's session can't reach the customer's other transfers
+        own = await self.create_transfer()
+        variables = {'id': own['transfer']['id']}
+        result = await self.as_token(GUEST_TRANSFER, variables, booking['session'])
+        self.assertIsNone(self.ok(result, 'transfer'))
+        # Someone else can't claim it, the customer can
+        variables = {'transferId': transfer_id, 'token': booking['accessToken']}
+        result = await self.execute(CLAIM_TRANSFER, variables, self.other_customer)
+        self.assertEqual(self.error_code(result), 'ERR063')
+        result = await self.execute(CLAIM_TRANSFER, variables, self.customer)
+        self.ok(result, 'claimTransfer')
+        result = await self.execute(TRANSFERS, {}, self.customer)
+        self.assertEqual(self.ok(result, 'transfers')['count'], 2)
+
+    async def test_staff_email_must_sign_in(self):
+        result = await self.book(self.contact(email='operator@example.com'))
+        self.assertEqual(self.error_code(result), 'ERR062')
+
+    async def test_open_bookings_limit(self):
+        await self.booked()
+        await self.booked()
+        result = await self.book()
+        self.assertEqual(self.error_code(result), 'ERR064')
+
+    @override_settings(GUEST_BOOKING_RATE_LIMIT=1)
+    async def test_rate_limit(self):
+        await self.booked()
+        result = await self.book(self.contact(email='x@example.com'))
+        self.assertEqual(self.error_code(result), 'ERR056')
+
+    async def test_pay_returns_to_booking_page(self):
+        booking = await self.booked()
+        transfer_id = booking['transfer']['id']
+        data = {'id': transfer_id, 'vehicleCategoryId': str(self.sedan.id)}
+        result = await self.as_token(PAY_TRANSFER, {'data': data}, booking['session'])
+        self.ok(result, 'payTransfer')
+        payload = self.async_post.call_args.args[1]
+        self.assertEqual(
+            payload['success_url'], f'http://localhost:5173/booking/{transfer_id}'
+        )
+        self.assertFalse(payload['stored_cards'])
+        # Paid: the customer's email carries the booking link
+        await self.psp_return({
+            'action': 'PAYMENT_RETURN', 'id': transfer_id, 'success': True
+        })
+        mails = [
+            call.kwargs['json'] for call in self.mail_post.call_args_list
+            if call.kwargs['json']['to_user']['email'] == 'grace@example.com'
+        ]
+        self.assertEqual(len(mails), 1)
+        self.assertIn(f'/booking/{transfer_id}#', mails[0]['link'])
+        staff_mails = [
+            call.kwargs['json'] for call in self.mail_post.call_args_list
+            if call.kwargs['json']['to_user']['email'] == 'admin@example.com'
+        ]
+        self.assertNotIn('link', staff_mails[0])
+
+    async def test_confirm_needs_emailed_code(self):
+        await models.State.objects.filter(pk=self.turkey.id).aupdate(
+            payment_enabled=False
+        )
+        booking = await self.booked()
+        transfer_id = booking['transfer']['id']
+        session = booking['session']
+        data = {'id': transfer_id, 'vehicleCategoryId': str(self.sedan.id)}
+        result = await self.as_token(CONFIRM_TRANSFER, {'data': data}, session)
+        self.assertEqual(self.error_code(result), 'ERR065')
+        variables = {'transferId': transfer_id}
+        result = await self.as_token(SEND_CONFIRM_CODE, variables, session)
+        secret = self.ok(result, 'sendConfirmCode')['secret']
+        code = self.sent_code()
+        self.assertEqual(
+            self.mail_post.call_args.kwargs['json']['to_user']['email'],
+            'grace@example.com'
+        )
+        wrong = '000000' if code != '000000' else '111111'
+        data.update(codeSecret=secret, code=wrong)
+        result = await self.as_token(CONFIRM_TRANSFER, {'data': data}, session)
+        self.assertEqual(self.error_code(result), 'ERR004')
+        data['code'] = code
+        result = await self.as_token(CONFIRM_TRANSFER, {'data': data}, session)
+        self.assertEqual(self.ok(result, 'confirmTransfer')['status'], 'ACCEPTED')
+
+    async def test_confirm_with_admin_code(self):
+        await models.State.objects.filter(pk=self.turkey.id).aupdate(
+            payment_enabled=False
+        )
+        booking = await self.booked()
+        transfer_id = booking['transfer']['id']
+        session = booking['session']
+        variables = {'transferId': transfer_id}
+        result = await self.as_token(SEND_CONFIRM_CODE, variables, session)
+        secret = self.ok(result, 'sendConfirmCode')['secret']
+        admin_code = '000000' if self.sent_code() != '000000' else '111111'
+        data = {
+            'id': transfer_id, 'vehicleCategoryId': str(self.sedan.id),
+            'codeSecret': secret, 'code': admin_code
+        }
+        # Without an ADMIN_CODE only the emailed code passes
+        with self.settings(ADMIN_CODE=''):
+            result = await self.as_token(CONFIRM_TRANSFER, {'data': data}, session)
+        self.assertEqual(self.error_code(result), 'ERR004')
+        with self.settings(ADMIN_CODE=admin_code):
+            result = await self.as_token(CONFIRM_TRANSFER, {'data': data}, session)
+        self.assertEqual(self.ok(result, 'confirmTransfer')['status'], 'ACCEPTED')
+
+    async def test_send_code_requires_payment_off(self):
+        booking = await self.booked()
+        variables = {'transferId': booking['transfer']['id']}
+        result = await self.as_token(SEND_CONFIRM_CODE, variables, booking['session'])
+        self.assertEqual(self.error_code(result), 'ERR061')
+
+    async def test_cancel_with_public_reason(self):
+        reason = await models.Reason.objects.acreate(
+            code='withdraw_plans', category='CUSTOMER_TERMINATION',
+            description_en='Plans changed'
+        )
+        result = await self.execute(REASONS, {'category': 'CUSTOMER_TERMINATION'})
+        self.assertEqual(len(self.ok(result, 'reasons')), 1)
+        booking = await self.booked()
+        data = {
+            'id': booking['transfer']['id'],
+            'cancellationReasonId': str(reason.id)
+        }
+        result = await self.as_token(CANCEL_WITH_REASON, {'data': data}, booking['session'])
+        self.assertEqual(self.ok(result, 'cancelTransfer')['status'], 'WITHDRAWN')
+
+    async def test_renew_link_revokes_old_one(self):
+        booking = await self.booked()
+        transfer_id = booking['transfer']['id']
+        result = await self.as_token(RENEW_BOOKING_LINK, {'id': transfer_id}, booking['session'])
+        renewed = self.ok(result, 'renewBookingLink')
+        self.assertNotEqual(renewed['accessToken'], booking['accessToken'])
+        result = await self.as_token(GUEST_TRANSFER, {'id': transfer_id}, booking['session'])
+        self.assertEqual(self.error_code(result), 'ERR063')
+        result = await self.as_token(GUEST_TRANSFER, {'id': transfer_id}, renewed['session'])
+        self.assertEqual(self.ok(result, 'transfer')['id'], transfer_id)
+        variables = {'transferId': transfer_id, 'token': booking['accessToken']}
+        result = await self.execute(GUEST_SESSION, variables)
+        self.assertEqual(self.error_code(result), 'ERR063')
+
+    async def test_sign_up_claims_guest(self):
+        booking = await self.booked()
+        data = {'email': 'grace@example.com', 'language': 'EN', 'isUser': False}
+        secret = self.ok(await self.execute(GET_CODE, {'data': data}), 'getCode')['secret']
+        data = {'code': self.sent_code(), 'secret': secret}
+        result = await self.execute(VALIDATE_CODE, {'data': data})
+        secret = self.ok(result, 'validateCode')['secret']
+        data = {
+            'secret': secret, 'password': PASSWORD, 'firstName': 'Grace',
+            'lastName': 'Hopper', 'phone': '+905559998877'
+        }
+        token = self.ok(await self.execute(CREATE_USER, {'data': data}), 'createCustomer')['token']
+        guest = await User.objects.aget(email='grace@example.com')
+        self.assertFalse(guest.is_guest)
+        result = await self.as_token(TRANSFERS, {}, token)
+        self.assertEqual(self.ok(result, 'transfers')['count'], 1)
+        # The guest session ended with the claim
+        variables = {'id': booking['transfer']['id']}
+        result = await self.as_token(GUEST_TRANSFER, variables, booking['session'])
+        self.assertEqual(self.error_code(result), 'ERR003')
+
+    async def test_reset_password_revokes_sessions(self):
+        token = utils.create_token(self.customer.email)
+        data = {'email': self.customer.email, 'language': 'EN', 'isUser': True}
+        secret = self.ok(await self.execute(GET_CODE, {'data': data}), 'getCode')['secret']
+        data = {'code': self.sent_code(), 'secret': secret}
+        secret = self.ok(await self.execute(VALIDATE_CODE, {'data': data}), 'validateCode')['secret']
+        reset = 'mutation($data: ResetPassword!) { resetPassword(data: $data) { success } }'
+        result = await self.execute(reset, {'data': {'secret': secret, 'password': PASSWORD}})
+        self.ok(result, 'resetPassword')
+        result = await self.as_token(TRANSFERS, {}, token)
+        self.assertEqual(self.error_code(result), 'ERR003')
+
+    async def test_stale_guest_booking_expires(self):
+        booking = await self.booked()
+        transfer_id = int(booking['transfer']['id'])
+        await self.create_transfer()
+        self.assertEqual(await tasks.check_transfers_expiring(), [])
+        await models.Transfer.objects.filter(pk=transfer_id).aupdate(
+            created_at=timezone.now() - timedelta(hours=25)
+        )
+        self.assertEqual(await tasks.check_transfers_expiring(), [transfer_id])
+
+    async def test_guest_subscription_gets_its_transfer_only(self):
+        contact = self.contact(email='customer@example.com')
+        booking = await self.booked(contact)
+        communicator = GraphQLWebsocketCommunicator(
+            application=application, path='/graphql',
+            connection_params={'authorization': booking['session']}
+        )
+        await communicator.gql_init()
+        try:
+            stream = communicator.subscribe(SUBSCRIBE)
+            task = asyncio.create_task(anext(stream))
+            await asyncio.sleep(0.1)
+            # The customer's other transfer: filtered out
+            await self.paid_transfer()
+            data = {'id': booking['transfer']['id'], 'cancellationReasonText': 'Ops'}
+            result = await self.execute(CANCEL_WITH_REASON, {'data': data}, self.operator)
+            self.ok(result, 'cancelTransfer')
+            event = (await asyncio.wait_for(task, 5)).data['subscribe']
+        finally:
+            await communicator.disconnect()
+        self.assertEqual(event['transferId'], booking['transfer']['id'])

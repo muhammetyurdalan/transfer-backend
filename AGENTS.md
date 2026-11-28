@@ -146,7 +146,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
   - `code`: benzersiz snake_case anahtar (`[a-z0-9]+(_[a-z0-9]+)*`, en fazla 50; geçersizse `ERR030`, varsa `ERR053`). Filtrelerde kullanılır.
   - `category` (`ReasonCategory`): `CUSTOMER_TERMINATION` (müşteri ödenmemiş transferden vazgeçer), `CUSTOMER_CANCELLATION` (müşteri ödenmiş transferi iptal eder), `OPERATOR_CANCELLATION` (OPERATOR/ADMIN/STAFF), `DRIVER_CANCELLATION` (şimdilik kullanılmıyor, DRIVER iptal edemez), `DRIVER_DISAPPROVAL`/`VEHICLE_DISAPPROVAL` (sürücü/araç onayının reddi için, henüz bir akış yok).
   - `description` çok dilli (`description_en` zorunlu, `tr`/`de`/`ru` boşsa `en`'e düşer, en fazla 200). `order` (sıralama `category`, `order`, `id`). `is_active` (varsayılan true).
-- **Sorgu/mutation:** `reasons(category?, code?, isActive?, language?)` ALL (giriş gerekli), `description` `language`'da veya kullanıcının dilinde. Pasif sebepleri sadece ADMIN/STAFF görür (`isActive` ile süzer), diğer rollere sadece aktifler döner. `createReason`/`updateReason`/`deleteReason` ADMIN, STAFF; bulunamayan `ERR050`. Transferde kullanılan sebep silinemez (`PROTECT`, `ERR054`), pasifleştirilir.
+- **Sorgu/mutation:** `reasons(category?, code?, isActive?, language?)` public (misafir rezervasyon iptali için; geçersiz token yok sayılır), `description` `language`'da, kullanıcının dilinde ya da `en`. Pasif sebepleri sadece ADMIN/STAFF görür (`isActive` ile süzer), diğer rollere sadece aktifler döner. `createReason`/`updateReason`/`deleteReason` ADMIN, STAFF; bulunamayan `ERR050`. Transferde kullanılan sebep silinemez (`PROTECT`, `ERR054`), pasifleştirilir.
 - **`cancelTransfer(data: CancelTransfer)`**: `id` + **ya** `cancellationReasonId` **ya** `cancellationReasonText` (ikisi de yoksa/metin boşsa `ERR051`, ikisi birden `ERR030`). Hata olursa iptal olmaz.
   - `cancellationReasonId`: aktif olmalı (`ERR050`) ve kategorisi iptal edene uymalı (`ERR052`): müşteri + `PENDING` → `CUSTOMER_TERMINATION`, müşteri + `ACCEPTED` → `CUSTOMER_CANCELLATION`, diğerleri → `OPERATOR_CANCELLATION` (`schemas/transfer.py` `cancellation_category`).
   - `cancellationReasonText` ("Diğer"): trim, 3–200 karakter (`ERR030`), yazıldığı dilde saklanır.
@@ -160,6 +160,24 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 - **`confirmTransfer(data: ConfirmTransfer)`** (CUSTOMER, OPERATOR, ADMIN, STAFF; `PayTransfer` ile aynı alanlar): sadece ödeme kapalıyken (açıksa `ERR061`). `payTransfer`'ın kontrolleri ve araç seçimi, açık ödeme linki expire edilir, koşullu update ile `PENDING → ACCEPTED` + `Transfer.is_offline_payment = true` (eski linkin ödemesi araya girdiyse `ERR014`). Bildirim ödenmiş transferdeki gibi (`psp.notify_transfer_accepted`: ADMIN/STAFF + operatör bildirimi ve `transfer_accepted` maili, müşteriye mail, `TRANSFER_ACCEPTED`), metni "confirmed without payment". PAYMENT transaction oluşmaz, ücret sistem dışında alınır.
 - `isOfflinePayment` transferi iptal etmek iade çağırmaz (`refund_cancelled_transfer` PAYMENT yoksa bir şey yapmaz), müşteri iptal cezası uygulanamaz.
 - Anahtar kapatılınca açık ödeme linklerine dokunulmaz: kendi süresinde kapanır, ödenirse webhook normal işler. `refundTransaction`/`retryRefund` kapalı bölgede de çalışır (eski ödemeler).
+
+### 4.3.3 Hesapsız rezervasyon (`schemas/guest.py`, `guest_booking.md`)
+- **Misafir:** şifresiz, oturumsuz CUSTOMER (`User.is_guest`). Bildirim kaydı/push almaz (`create_notifications` misafirleri atlar), mail alır.
+- **`createGuestTransfer(data: CreateTransfer, contact: GuestContact, language?)`** (public, IP başına `GUEST_BOOKING_RATE_LIMIT`/saat, `ERR056`; token okunmaz): `contact` ad, soyad, e-posta, telefon, `acceptTerms` (false/geçersiz `ERR030`, telefon boş `ERR043`). Transfer önce doğrulanır (`prepare_new_transfer`, hata varsa hesap açılmaz), sonra müşteri:
+  - yeni e-posta ya da silinmiş hesabın e-postası → misafir açılır (silinmişte `token_version` artar);
+  - misafirin e-postası → aynı misafir (ad/telefon değişmez);
+  - kayıtlı CUSTOMER → onun transferi olur ama `is_claimed = false`: müşterinin listesinde görünmez (`get_transfers`), linkle girenden hesabın ad/e-posta/telefonu gizlenir (`schema.hides_account`);
+  - DRIVER/OPERATOR/ADMIN/STAFF → `ERR062` (giriş yapmalı).
+  Yolcu boşsa kişiden doldurulur (hesaptan değil), `payer_name/email/phone` + `terms_accepted_at` yazılır. E-posta başına en fazla `GUEST_OPEN_BOOKINGS` (2) ödenmemiş misafir transferi (`ERR064`). Dönüş: transfer, `vehicleOptions`, `accessToken` (link token'ı), `session`.
+- **Link token'ı:** `HMAC(SECRET_KEY, "<id>:<access_nonce>")` (`utils.get_access_token`), DB'de sadece nonce; süresiz. Link `FRONTEND_URL/booking/<id>#<token>` (`get_booking_link`, token fragment'te). `access_nonce` boş değilse misafir rezervasyonu (`Transfer.isGuestBooking`).
+- **Misafir oturumu:** `guestSession(transferId, token)` (public, rate limit'li, geçersiz `ERR063`) `GUEST_SESSION_HOURS` (24) geçerli JWT (`session`) ve `customerId` (frontend misafiri bu id'li müşteri gibi gösterir) verir: `scope: guest`, `tid`, nonce öneki `an`, `tv`. `authenticate` transferi ve nonce'u kontrol eder, `user.guest_transfer_id` set eder. `permission_required` misafir oturumunu **sadece `GUEST` içeren** resolver'lara alır (`ALL` yetmez): `transfer`, `vehicleOptions`, `updateTransfer`, `payTransfer`, `confirmTransfer`, `cancelTransfer`, mesaj uçları, `subscribe`, `renewBookingLink`, `sendConfirmCode`. Kapsam `get_transfers`/`get_transactions`/`check_messaging_access`/`check_guest_scope` ile tek transfer; abonelik sadece o transferin olaylarını iletir.
+- **Ödeme:** misafir oturumunda `/createPaymentLink`'e `success_url`/`cancel_url` = `FRONTEND_URL/booking/<id>` ve `stored_cards: false`. Kabul mailinin müşteri kopyasında `link` (booking linki), admin/operatör kopyasında yok.
+- **Ödeme kapalı bölge:** misafir `confirmTransfer` için önce `sendConfirmCode(transferId)` (kod `payer_email`'e, ödeme açıksa `ERR061`), sonra `codeSecret` + `code` (yoksa `ERR065`, yanlış `ERR004`, süresi geçmiş `ERR009`, transfer başına `GUEST_CODE_ATTEMPTS` deneme `ERR056`; `ADMIN_CODE` doluysa o da geçer, `codeSecret` yine bu transferin olmalı).
+- `renewBookingLink(id)` (GUEST, ADMIN, STAFF): yeni nonce, eski link ve oturumları `ERR063`. `claimTransfer(transferId, token)` (CUSTOMER, tam oturum): kendi e-postasıyla misafir olarak yapılmış transferi listesine alır (başkasınınki `ERR063`).
+- **Sahiplenme:** misafir e-postasında `getCode(isUser: false)` `ERR011` vermez; `createCustomer` (DRIVER olamaz, `ERR011`), `socialSignIn`, `resetPassword`, `createAdminUser` misafir kaydını devralır (`is_guest = false`, `token_version` artar → misafir oturumları biter). Davet de misafir e-postasına gönderilebilir.
+- **`User.token_version`:** her token'da `tv`; uyuşmazsa `ERR003`. `resetPassword` artırır (bütün oturumlar kapanır).
+- `check_transfers_expiring` misafirin `GUEST_PENDING_HOURS` (24) ödenmemiş transferini de `EXPIRED` yapar.
+- `reasons` sorgusu public (§4.3.1): token yoksa sadece aktifler, `en`.
 
 ### 4.4 Mesajlaşma (`schemas/message.py`)
 - Mesajlar `Transfer`'e bağlı. Katılımcılar: `customer`, `operator` (atamayı yapan), transferin bütün iç sürücüleri (`utils.get_driver_ids`, dış sürücülerin hesabı yok) ve **tüm aktif ADMIN/STAFF kullanıcıları** (her transferin mesajlaşmasına dahil). Alıcılar gönderen dışındaki katılımcılar (`utils.get_messaging_receiver_ids`), yani ADMIN/STAFF her mesajın bildirimini ve WebSocket olayını alır.
@@ -188,7 +206,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 
 ## 5. Hata kodları
 
-`errors.txt` tek kaynak. Sıradaki kod **ERR062**.
+`errors.txt` tek kaynak. Sıradaki kod **ERR066**.
 
 | Aralık | Alan |
 |---|---|
@@ -202,6 +220,7 @@ her saat (celery beat) ──► pickup_time'ı geçmiş PENDING ──► EXPIR
 | ERR031–ERR034, ERR042, ERR055, ERR060–ERR061 | Ödeme (ERR042: iade zaten tamamlandı, ERR055: state koşulsuz iadeye izin vermiyor veya ödeme kapalı, ERR060: state'te ödeme kapalı (`payTransfer`, `tipDriver`), ERR061: ödeme açık, `confirmTransfer` kullanılamaz) |
 | ERR036–ERR038 | State |
 | ERR039–ERR041 | City, district (ERR039: city bulunamadı, ERR040/041: kullanımda) |
+| ERR062–ERR065 | Hesapsız rezervasyon (ERR062: e-posta personel/sürücü hesabının, giriş gerekli; ERR063: booking linki/oturumu geçersiz; ERR064: e-postanın açık misafir rezervasyonu çok; ERR065: misafir onayında kod gerekli) |
 | ERR050–ERR054 | İptal sebebi (ERR050: reason bulunamadı/pasif, ERR051: iptal sebebi zorunlu, ERR052: sebep bu iptale uygun değil, ERR053: kod zaten var, ERR054: sebep kullanımda) |
 
 ## 6. Proje kararları (§15)
